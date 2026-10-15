@@ -19,7 +19,8 @@ export type CreatorTool =
   | 'TRIANGLE'
   | 'LINE'
   | 'ARROW'
-  | 'DIAMOND';
+  | 'DIAMOND'
+  | 'STAR';
 
 export type CanvasJson = Record<string, unknown> | unknown[];
 export type ViewportTransform = number[];
@@ -139,9 +140,11 @@ export interface OcrResult {
 }
 
 export interface CodeTutorMessage {
+  id?: string;
   role: 'user' | 'model';
   text: string;
   timestamp: number;
+  model?: string;
 }
 
 // ── Lesson Planning ──────────────────────────────────────────────────────────
