@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+dist-electron/
+dist-release/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Vercel
+.vercel
+
+# Local AI
+rooms_persistence.json
+
+# ====================================================
+# REFERENCE PROJECTS — DO NOT COMMIT TO GITHUB
+# These are private reference materials only.
+# ====================================================
+codebuddy-main/
+trido-main/
