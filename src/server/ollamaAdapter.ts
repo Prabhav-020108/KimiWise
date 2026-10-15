@@ -67,7 +67,16 @@ const ollamaChat = async (
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`Ollama HTTP ${response.status}: ${await response.text()}`);
+      const errText = await response.text();
+      if (!modelOverride && model !== 'llama3.2:3b') {
+        const probe = await probeOllama(url);
+        const fallback = probe.models.find((m) => m !== model && !m.includes('gemma4'));
+        if (fallback) {
+          console.warn(`[ollamaAdapter] ${model} failed (${errText.slice(0, 60)}...). Falling back to ${fallback}`);
+          return ollamaChat(messages, customUrl, fallback);
+        }
+      }
+      throw new Error(`Ollama HTTP ${response.status}: ${errText}`);
     }
 
     const data = await response.json() as { message?: { content?: string } };

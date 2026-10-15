@@ -26,6 +26,63 @@ const getModel = (override?: string) =>
   process.env.GOOGLE_AI_MODEL ||
   CONFIG.ai.gemma.model;
 
+async function generateContentWithFallback(
+  ai: ReturnType<typeof getClient>,
+  model: string,
+  contents: unknown,
+  config?: Record<string, unknown>
+) {
+  const sanitizedConfig = { ...config };
+  if (
+    sanitizedConfig.thinkingConfig &&
+    typeof sanitizedConfig.thinkingConfig === 'object' &&
+    (sanitizedConfig.thinkingConfig as { thinkingBudget?: number }).thinkingBudget === 0
+  ) {
+    delete sanitizedConfig.thinkingConfig;
+  }
+
+  try {
+    return await ai.models.generateContent({
+      model,
+      contents: contents as any,
+      config: sanitizedConfig as any,
+    });
+  } catch (err: unknown) {
+    const msg = String(err);
+    if (msg.includes('Thinking budget is not supported') && sanitizedConfig.thinkingConfig) {
+      delete sanitizedConfig.thinkingConfig;
+      return await ai.models.generateContent({
+        model,
+        contents: contents as any,
+        config: sanitizedConfig as any,
+      });
+    }
+
+    const fallback = CONFIG.ai.gemma.fallbackModel;
+    if (
+      model !== fallback &&
+      (msg.includes('503') ||
+        msg.includes('404') ||
+        msg.includes('NOT_FOUND') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('INTERNAL') ||
+        msg.includes('high demand') ||
+        msg.includes('no longer available'))
+    ) {
+      console.warn(
+        `[gemmaAdapter] Model ${model} failed (${msg.slice(0, 100)}). Falling back to ${fallback}`
+      );
+      delete sanitizedConfig.thinkingConfig;
+      return await ai.models.generateContent({
+        model: fallback,
+        contents: contents as any,
+        config: sanitizedConfig as any,
+      });
+    }
+    throw err;
+  }
+}
+
 // ── Board Agent — multimodal (canvas image + function calling) ────────────────
 
 export const generateAgentActionsGemma = async (
@@ -85,21 +142,17 @@ export const generateAgentActionsGemma = async (
 
   let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
   try {
-    response = await ai.models.generateContent({
-      model: selectedModel,
-      contents,
-      config: {
-        tools: [{ functionDeclarations: CANVAS_TOOLS as any }],
-        toolConfig: {
-          functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO },
-        },
-        systemInstruction,
-        temperature: CONFIG.ai.gemma.generation.temperature,
-        maxOutputTokens: CONFIG.ai.gemma.generation.maxOutputTokens,
-        thinkingConfig: {
-          thinkingBudget:
-            prompt.length > 300 ? 1024 : CONFIG.ai.gemma.generation.thinkingBudget,
-        },
+    response = await generateContentWithFallback(ai, selectedModel, contents, {
+      tools: [{ functionDeclarations: CANVAS_TOOLS as any }],
+      toolConfig: {
+        functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO },
+      },
+      systemInstruction,
+      temperature: CONFIG.ai.gemma.generation.temperature,
+      maxOutputTokens: CONFIG.ai.gemma.generation.maxOutputTokens,
+      thinkingConfig: {
+        thinkingBudget:
+          prompt.length > 300 ? 1024 : CONFIG.ai.gemma.generation.thinkingBudget,
       },
     });
   } finally {
@@ -151,9 +204,10 @@ export const performOcrGemma = async (
   const mimeMatch = imageBase64.match(/^data:([^;]+);base64,/);
   const mimeType = mimeMatch?.[1] || 'image/jpeg';
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithFallback(
+    ai,
     model,
-    contents: [
+    [
       {
         role: 'user',
         parts: [
@@ -174,11 +228,11 @@ If the image contains no code, return extractedCode as empty string and confiden
         ],
       },
     ],
-    config: {
+    {
       temperature: 0.1,
       systemInstruction: SYSTEM_PROMPTS.codeTutor,
-    },
-  });
+    }
+  );
 
   const text = response.text?.trim() || '';
   try {
@@ -219,14 +273,10 @@ export const tutorCodeGemma = async (
     },
   ];
 
-  const response = await ai.models.generateContent({
-    model,
-    contents,
-    config: {
-      systemInstruction: SYSTEM_PROMPTS.codeTutor,
-      temperature: 0.3,
-      maxOutputTokens: 4096,
-    },
+  const response = await generateContentWithFallback(ai, model, contents, {
+    systemInstruction: SYSTEM_PROMPTS.codeTutor,
+    temperature: 0.3,
+    maxOutputTokens: 4096,
   });
 
   return response.text?.trim() || "I couldn't generate a response. Please try again.";
@@ -249,15 +299,11 @@ export const generateTextGemma = async (
     { role: 'user' as const, parts: [{ text: prompt }] },
   ];
 
-  const response = await ai.models.generateContent({
-    model,
-    contents,
-    config: {
-      systemInstruction: systemPrompt || SYSTEM_PROMPTS.boardAgent,
-      temperature: 0.4,
-      maxOutputTokens: 4096,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
+  const response = await generateContentWithFallback(ai, model, contents, {
+    systemInstruction: systemPrompt || SYSTEM_PROMPTS.boardAgent,
+    temperature: 0.4,
+    maxOutputTokens: 4096,
+    thinkingConfig: { thinkingBudget: 0 },
   });
 
   return response.text?.trim() || '';
@@ -277,9 +323,10 @@ export const transcribeAudioGemma = async (
   const mimeMatch = base64Audio.match(/^data:(audio\/[^;]+);base64,/);
   const mimeType = (mimeMatch?.[1] || 'audio/webm') as 'audio/webm' | 'audio/ogg' | 'audio/wav' | 'audio/mp4';
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithFallback(
+    ai,
     model,
-    contents: [
+    [
       {
         parts: [
           { inlineData: { mimeType, data: audioData } },
@@ -289,11 +336,11 @@ export const transcribeAudioGemma = async (
         ],
       },
     ],
-    config: {
+    {
       temperature: CONFIG.ai.gemma.transcription.temperature,
       thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+    }
+  );
 
   return response.text?.trim() || '';
 };
@@ -334,15 +381,16 @@ Duration: ${duration} minutes
 Create 4-6 steps covering intro, core concepts, practice, and closing.
 Return ONLY the raw JSON.`;
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithFallback(
+    ai,
     model,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    config: {
+    [{ role: 'user', parts: [{ text: prompt }] }],
+    {
       systemInstruction: SYSTEM_PROMPTS.lessonPlanner,
       temperature: 0.3,
       thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+    }
+  );
 
   const text = response.text?.trim() || '';
   try {
@@ -375,15 +423,16 @@ Return ONLY this JSON (no markdown):
 }
 Include ${Math.max(2, questionCount - 1)} multiple choice and 1 essay question.`;
 
-  const response = await ai.models.generateContent({
+  const response = await generateContentWithFallback(
+    ai,
     model,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    config: {
+    [{ role: 'user', parts: [{ text: prompt }] }],
+    {
       systemInstruction: SYSTEM_PROMPTS.quizGenerator,
       temperature: 0.4,
       thinkingConfig: { thinkingBudget: 0 },
-    },
-  });
+    }
+  );
 
   const text = response.text?.trim() || '';
   try {
