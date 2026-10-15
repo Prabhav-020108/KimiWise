@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "check": "tsc -b --noEmit",
-    "start": "tsx src/server/server.ts"
+    "start": "node dist/server/server.js"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
