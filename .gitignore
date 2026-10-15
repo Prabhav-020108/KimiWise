@@ -1,36 +1,56 @@
 # Dependencies
 node_modules/
+node_modules
 .pnp
 .pnp.js
 
 # Build output
 dist/
+dist
+dist-server/
+dist-server
+dist-ssr
 dist-electron/
 dist-release/
 build/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.local
 
-# IDE
+# IDE & Editor
 .vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
+.idea
 *.swp
 *.swo
+*.sw?
 *~
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
 # OS files
 .DS_Store
 Thumbs.db
 
 # Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
