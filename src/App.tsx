@@ -1,122 +1,81 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect } from 'react';
+import { useStore } from './store';
+import { Header } from './components/layout/Header';
+import { Sidebar } from './components/layout/Sidebar';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
+import { BoardView } from './components/board/BoardView';
+import { CodeLabView } from './components/codelab/CodeLabView';
+import { TeacherView } from './components/teacher/TeacherView';
+import { QuizView } from './components/tools/QuizView';
+import { ChatView } from './components/chat/ChatView';
+import { SettingsView } from './components/layout/SettingsView';
+import { aiService } from './services/aiService';
 
-function App() {
-  const [count, setCount] = useState(0)
+export function App() {
+  const { ui, setAiStatus } = useStore();
+
+  // Probe AI status on mount
+  useEffect(() => {
+    let isMounted = true;
+    const checkAi = async () => {
+      setAiStatus({ isChecking: true });
+      try {
+        const status = await aiService.checkStatus();
+        if (isMounted) {
+          setAiStatus({
+            isConnected: status.gemma.available || status.ollama.online,
+            runtimeMode: status.recommendedMode,
+            activeModel: status.gemma.available ? status.gemma.model : status.ollama.model || 'none',
+            isChecking: false,
+            lastChecked: Date.now(),
+            errorMessage: null,
+          });
+        }
+      } catch {
+        if (isMounted) {
+          setAiStatus({
+            isConnected: false,
+            runtimeMode: 'unavailable',
+            isChecking: false,
+            errorMessage: 'Unable to reach backend',
+          });
+        }
+      }
+    };
+
+    checkAi();
+    return () => {
+      isMounted = false;
+    };
+  }, [setAiStatus]);
+
+  // Synchronize dark mode class to html element
+  useEffect(() => {
+    if (ui.theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [ui.theme]);
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <ErrorBoundary>
+      <div className={`h-screen flex flex-col bg-background text-foreground transition-colors overflow-hidden ${ui.theme}`}>
+        <Header />
+        <div className="flex-1 flex overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 relative overflow-hidden bg-background">
+            {ui.activeView === 'board' && <BoardView />}
+            {ui.activeView === 'codelab' && <CodeLabView />}
+            {ui.activeView === 'teacher' && <TeacherView />}
+            {ui.activeView === 'quiz' && <QuizView />}
+            {ui.activeView === 'chat' && <ChatView />}
+            {ui.activeView === 'settings' && <SettingsView />}
+          </main>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      </div>
+    </ErrorBoundary>
+  );
 }
 
-export default App
+export default App;
