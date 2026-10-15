@@ -12,16 +12,16 @@ export const TeacherView: React.FC = () => {
   ];
 
   return (
-    <div className="w-full h-full p-4 md:p-6 space-y-5 overflow-y-auto">
+    <div className="w-full h-full p-4 md:p-6 space-y-5 overflow-y-auto bg-slate-50 select-none">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-card/80 to-card/40 border border-border/80 backdrop-blur-md shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0 shadow-xs">
             <GraduationCap size={22} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-foreground">Teacher Intelligence Hub</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Teacher Intelligence Hub</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
               Automated lesson plans, real-time student analytics, and Gemma 4 curriculum insights.
             </p>
           </div>
@@ -29,65 +29,85 @@ export const TeacherView: React.FC = () => {
 
         <button
           onClick={() => {}}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-xs font-semibold shadow-sm hover:bg-primary/90 transition-all self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm shadow-blue-500/25 transition-all self-start sm:self-auto active:scale-95 cursor-pointer"
         >
           <Sparkles size={14} />
           <span>Generate Lesson Plan</span>
         </button>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        {/* Enrolled Students */}
+        <div className="p-4.5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
             <span>Enrolled Students</span>
-            <Users size={16} className="text-indigo-400" />
+            <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Users size={15} />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-foreground">{mockStudents.length}</div>
-          <p className="text-[11px] text-emerald-400 font-medium">100% Active in Classroom</p>
+          <div className="text-2xl font-black text-slate-900">{mockStudents.length}</div>
+          <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            100% Active in Classroom
+          </p>
         </div>
 
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        {/* Average Mastery */}
+        <div className="p-4.5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
             <span>Average Mastery</span>
-            <TrendingUp size={16} className="text-emerald-400" />
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <TrendingUp size={15} />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-foreground">85%</div>
-          <p className="text-[11px] text-muted-foreground">+7% from last session</p>
+          <div className="text-2xl font-black text-slate-900">85%</div>
+          <p className="text-[11px] text-slate-500 font-medium">+7% from last session</p>
         </div>
 
-        <div className="p-4 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-1">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        {/* Lesson Readiness */}
+        <div className="p-4.5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-1.5">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold">
             <span>Lesson Readiness</span>
-            <Award size={16} className="text-amber-400" />
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+              <Award size={15} />
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-foreground">
+          <div className="text-2xl font-black text-slate-900">
             {lesson.activeLessonPlan ? 'Ready' : 'Drafting'}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[11px] text-slate-500 truncate font-medium">
             {lesson.activeLessonPlan ? lesson.activeLessonPlan.topic : 'Click to generate with Gemma 4'}
           </p>
         </div>
       </div>
 
       {/* Student Progress Table */}
-      <div className="rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md overflow-hidden">
-        <div className="px-5 py-3 border-b border-border/60 flex items-center justify-between text-xs font-bold text-foreground">
+      <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-200/80 flex items-center justify-between text-xs font-bold text-slate-800 bg-slate-50/60">
           <div className="flex items-center gap-2">
-            <BookOpen size={15} className="text-indigo-400" />
+            <BookOpen size={15} className="text-blue-600" />
             <span>Classroom Roster & Performance</span>
           </div>
+          <span className="text-[11px] text-slate-400 font-semibold">{mockStudents.length} Students Active</span>
         </div>
-        <div className="divide-y divide-border/40 text-xs">
+
+        <div className="divide-y divide-slate-100 text-xs">
           {mockStudents.map((student) => (
-            <div key={student.studentId} className="px-5 py-3 flex items-center justify-between hover:bg-muted/30 transition-colors">
+            <div
+              key={student.studentId}
+              className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/80 transition-colors"
+            >
               <div>
-                <p className="font-semibold text-foreground">{student.studentName}</p>
-                <p className="text-[11px] text-muted-foreground">Needs help with: {student.weakTopics.join(', ')}</p>
+                <p className="font-bold text-slate-800 text-xs">{student.studentName}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Needs help with: <span className="text-slate-600 font-medium">{student.weakTopics.join(', ')}</span>
+                </p>
               </div>
+
               <div className="text-right">
-                <span className="font-bold text-foreground">{student.score}%</span>
-                <p className="text-[10px] text-muted-foreground">{student.completedQuizzes} Quizzes taken</p>
+                <span className="font-black text-slate-900 text-sm">{student.score}%</span>
+                <p className="text-[10px] text-slate-400 mt-0.5">{student.completedQuizzes} Quizzes taken</p>
               </div>
             </div>
           ))}

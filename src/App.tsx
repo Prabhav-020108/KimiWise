@@ -64,7 +64,7 @@ export function App() {
         <Header />
         <div className="flex-1 flex overflow-hidden">
           <Sidebar />
-          <main className="flex-1 relative overflow-hidden bg-background">
+          <main className="flex-1 relative overflow-hidden bg-slate-50">
             {ui.activeView === 'board' && <BoardView />}
             {ui.activeView === 'codelab' && <CodeLabView />}
             {ui.activeView === 'teacher' && <TeacherView />}

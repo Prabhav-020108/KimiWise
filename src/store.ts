@@ -303,7 +303,7 @@ export const useStore = create<KimiWiseStore>()((set) => ({
     isSidebarOpen: true,
     isMobileNavOpen: false,
     activeView: 'board',
-    theme: 'dark',
+    theme: 'light',
     notifications: [],
   },
 

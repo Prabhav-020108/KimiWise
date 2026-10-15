@@ -18,20 +18,21 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full p-4 md:p-6 max-w-2xl mx-auto space-y-6 overflow-y-auto">
-      <div className="flex items-center gap-3 pb-4 border-b border-border/80">
-        <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
-          <Settings size={20} />
+    <div className="w-full h-full p-4 md:p-6 max-w-2xl mx-auto space-y-5 overflow-y-auto bg-slate-50 select-none">
+      {/* Header Banner */}
+      <div className="flex items-center gap-3.5 p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm">
+        <div className="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center shrink-0 shadow-xs">
+          <Settings size={22} />
         </div>
         <div>
-          <h2 className="text-base font-bold text-foreground">AI & Runtime Settings</h2>
-          <p className="text-xs text-muted-foreground">Configure Gemma 4 cloud credentials, local Ollama endpoints, and preferences.</p>
+          <h2 className="text-base font-extrabold text-slate-900 tracking-tight">AI & Runtime Settings</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Configure Gemma 4 cloud credentials, local Ollama endpoints, and preferences.</p>
         </div>
       </div>
 
       {/* Model Preference Selection */}
-      <div className="p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">AI Provider Mode</h3>
+      <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-3.5">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">AI Provider Mode</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             { id: 'auto' as const, label: 'Auto Detect', desc: 'Gemma 4 first, fallback to Ollama', icon: Sparkles },
@@ -44,18 +45,18 @@ export const SettingsView: React.FC = () => {
               <button
                 key={mode.id}
                 onClick={() => setAiPreference(mode.id)}
-                className={`p-3.5 rounded-xl border text-left transition-all space-y-1.5 ${
+                className={`p-3.5 rounded-xl border text-left transition-all space-y-1.5 cursor-pointer ${
                   isSelected
-                    ? 'border-primary bg-primary/10 text-primary shadow-xs'
-                    : 'border-border/60 hover:border-border text-muted-foreground hover:text-foreground'
+                    ? 'border-2 border-blue-600 bg-blue-50 text-blue-900 font-bold shadow-xs'
+                    : 'border-slate-200 bg-slate-50/60 hover:bg-blue-50/50 hover:border-blue-200 text-slate-700'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <Icon size={16} />
-                  {isSelected && <Check size={14} className="text-primary" />}
+                  <Icon size={16} className={isSelected ? 'text-blue-600' : 'text-slate-500'} />
+                  {isSelected && <Check size={14} className="text-blue-600" />}
                 </div>
-                <div className="font-semibold text-xs text-foreground">{mode.label}</div>
-                <div className="text-[10px] leading-tight text-muted-foreground">{mode.desc}</div>
+                <div className="font-bold text-xs text-slate-900">{mode.label}</div>
+                <div className="text-[10px] leading-tight text-slate-500">{mode.desc}</div>
               </button>
             );
           })}
@@ -63,12 +64,12 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* API Key Input */}
-      <div className="p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-3">
-        <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-          <KeyRound size={15} className="text-indigo-400" />
+      <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-3.5">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-800">
+          <KeyRound size={15} className="text-blue-600" />
           <span>Google AI Studio API Key</span>
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[11px] text-slate-500 leading-relaxed">
           You can provide an API key directly in the browser if it wasn&apos;t set in the server environment (.env).
         </p>
         <div className="flex gap-2">
@@ -77,11 +78,11 @@ export const SettingsView: React.FC = () => {
             value={apiKeyInput}
             onChange={(e) => setApiKeyInput(e.target.value)}
             placeholder="AIzaSy..."
-            className="flex-1 bg-muted/40 border border-border/70 rounded-xl px-3.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:border-primary"
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all shadow-xs"
           />
           <button
             onClick={handleSaveKey}
-            className="px-4 py-2 bg-primary text-white text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all shadow-xs shrink-0"
+            className="px-5 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 transition-all shadow-sm shadow-blue-500/25 shrink-0 active:scale-95 cursor-pointer"
           >
             {isSaved ? 'Saved!' : 'Save Key'}
           </button>
@@ -89,24 +90,24 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* Model Specs Table */}
-      <div className="p-5 rounded-2xl border border-border/80 bg-card/40 backdrop-blur-md space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Active Configuration</h3>
-        <div className="space-y-2 text-xs">
-          <div className="flex justify-between py-1.5 border-b border-border/40">
-            <span className="text-muted-foreground">Primary Model:</span>
-            <span className="font-mono font-medium text-foreground">{CONFIG.ai.gemma.model}</span>
+      <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-3.5">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Configuration</h3>
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-500 font-medium">Primary Model:</span>
+            <span className="font-mono font-bold text-slate-800">{CONFIG.ai.gemma.model}</span>
           </div>
-          <div className="flex justify-between py-1.5 border-b border-border/40">
-            <span className="text-muted-foreground">Local Model:</span>
-            <span className="font-mono font-medium text-foreground">{CONFIG.ai.ollama.model}</span>
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-500 font-medium">Local Model:</span>
+            <span className="font-mono font-bold text-slate-800">{CONFIG.ai.ollama.model}</span>
           </div>
-          <div className="flex justify-between py-1.5 border-b border-border/40">
-            <span className="text-muted-foreground">Ollama Endpoint:</span>
-            <span className="font-mono font-medium text-foreground">{CONFIG.ai.ollama.defaultBaseUrl}</span>
+          <div className="flex justify-between py-2 border-b border-slate-100">
+            <span className="text-slate-500 font-medium">Ollama Endpoint:</span>
+            <span className="font-mono font-bold text-slate-800">{CONFIG.ai.ollama.defaultBaseUrl}</span>
           </div>
-          <div className="flex justify-between py-1.5">
-            <span className="text-muted-foreground">Max Output Tokens:</span>
-            <span className="font-mono font-medium text-foreground">{CONFIG.ai.gemma.generation.maxOutputTokens}</span>
+          <div className="flex justify-between py-2">
+            <span className="text-slate-500 font-medium">Max Output Tokens:</span>
+            <span className="font-mono font-bold text-slate-800">{CONFIG.ai.gemma.generation.maxOutputTokens}</span>
           </div>
         </div>
       </div>
