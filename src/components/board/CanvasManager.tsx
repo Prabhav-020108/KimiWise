@@ -35,18 +35,53 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     const width = container.clientWidth || 1200;
     const height = container.clientHeight || 800;
 
+    // High visual fidelity: disable bitmap raster caching for razor-sharp vector rendering
+    FabricClass.Object.prototype.objectCaching = false;
+
     const fCanvas = new FabricClass.Canvas(canvasElRef.current, {
       width,
       height,
-      backgroundColor: '#ffffff',
+      backgroundColor: 'transparent',
       selection: true,
       preserveObjectStacking: true,
       stopContextMenu: true,
       fireRightClick: true,
+      enableRetinaScaling: true,
     });
 
     fabricRef.current = fCanvas;
     (window as any).__KIMIWISE_CANVAS__ = fCanvas;
+
+    // ── Sync background dotted mesh with canvas viewport ───────────────────
+    const syncGrid = () => {
+      if (!containerRef.current || !fCanvas) return;
+      const vpt = fCanvas.viewportTransform;
+      if (!vpt) return;
+      const zoom = fCanvas.getZoom() || 1;
+      const size = Math.max(14, Math.round(28 * zoom));
+      const posX = Math.round(vpt[4]);
+      const posY = Math.round(vpt[5]);
+      containerRef.current.style.backgroundSize = `${size}px ${size}px`;
+      containerRef.current.style.backgroundPosition = `${posX}px ${posY}px`;
+    };
+    (window as any).__KIMIWISE_SYNC_GRID__ = syncGrid;
+    syncGrid();
+
+    // ── Global Pan helper for toolbar / arrow buttons ───────────────────────
+    (window as any).__KIMIWISE_PAN__ = (dx: number, dy: number) => {
+      if (!fCanvas) return;
+      if (FabricClass.Point) {
+        fCanvas.relativePan(new FabricClass.Point(dx, dy));
+      } else {
+        const vpt = fCanvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += dx;
+          vpt[5] += dy;
+          fCanvas.requestRenderAll();
+        }
+      }
+      syncGrid();
+    };
 
     // ── Scroll Wheel Zoom ──────────────────────────────────────────────────
     fCanvas.on('mouse:wheel', (opt: any) => {
@@ -57,18 +92,21 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       if (zoom < 0.1) zoom = 0.1;
       fCanvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
       setZoom(zoom);
+      syncGrid();
       opt.e.preventDefault();
       opt.e.stopPropagation();
     });
 
-    // ── Pan (middle click or Alt drag) ─────────────────────────────────────
+    // ── Pan (middle click, Space+drag, Alt+drag, or PAN tool) ──────────────
     fCanvas.on('mouse:down', (opt: any) => {
       const evt = opt.e;
-      if (evt.button === 1 || evt.altKey) {
+      const currentTool = activeToolRef.current;
+      if (evt.button === 1 || evt.altKey || currentTool === 'PAN') {
         isPanningRef.current = true;
         fCanvas.selection = false;
         lastMousePosRef.current = { x: evt.clientX, y: evt.clientY };
-        fCanvas.defaultCursor = 'grab';
+        fCanvas.defaultCursor = 'grabbing';
+        fCanvas.setCursor('grabbing');
       }
     });
 
@@ -79,6 +117,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
         vpt[4] += evt.clientX - lastMousePosRef.current.x;
         vpt[5] += evt.clientY - lastMousePosRef.current.y;
         fCanvas.requestRenderAll();
+        syncGrid();
         lastMousePosRef.current = { x: evt.clientX, y: evt.clientY };
       }
     });
@@ -86,8 +125,9 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     fCanvas.on('mouse:up', () => {
       if (isPanningRef.current) {
         isPanningRef.current = false;
-        fCanvas.selection = true;
-        fCanvas.defaultCursor = 'default';
+        fCanvas.selection = activeToolRef.current !== 'PAN';
+        fCanvas.defaultCursor = activeToolRef.current === 'PAN' ? 'grab' : 'default';
+        syncGrid();
       }
     });
 
@@ -113,8 +153,10 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     // ── Resize handler ─────────────────────────────────────────────────────
     const handleResize = () => {
       if (!containerRef.current || !fabricRef.current) return;
-      fabricRef.current.setWidth(containerRef.current.clientWidth);
-      fabricRef.current.setHeight(containerRef.current.clientHeight);
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      fabricRef.current.setWidth(w);
+      fabricRef.current.setHeight(h);
       fabricRef.current.calcOffset();
       fabricRef.current.renderAll();
     };
@@ -151,7 +193,13 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     const FabricClass = (window as any).fabric;
     if (!FabricClass) return;
 
-    if (canvasState.activeTool === 'PENCIL') {
+    if (canvasState.activeTool === 'PAN') {
+      fCanvas.isDrawingMode = false;
+      fCanvas.selection = false;
+      fCanvas.defaultCursor = 'grab';
+      fCanvas.getObjects().forEach((o: any) => { o.selectable = false; o.evented = false; });
+      fCanvas.requestRenderAll();
+    } else if (canvasState.activeTool === 'PENCIL') {
       fCanvas.isDrawingMode = true;
       fCanvas.selection = false;
       fCanvas.freeDrawingBrush = new FabricClass.PencilBrush(fCanvas);
@@ -165,7 +213,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       fCanvas.isDrawingMode = true;
       fCanvas.selection = false;
       fCanvas.freeDrawingBrush = new FabricClass.PencilBrush(fCanvas);
-      fCanvas.freeDrawingBrush.color = '#ffffff';
+      fCanvas.freeDrawingBrush.color = 'rgba(255,255,255,1)';
       fCanvas.freeDrawingBrush.width = Math.max(canvasState.strokeWidth * 4, 24);
       fCanvas.freeDrawingBrush.decimate = 2.0;
       fCanvas.defaultCursor = 'cell';
@@ -182,6 +230,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       // Instantly spawn at viewport center (like Trido), select it, and reset to SELECT
       fCanvas.isDrawingMode = false;
       fCanvas.selection = true;
+      fCanvas.getObjects().forEach((o: any) => { o.selectable = true; o.evented = true; });
       const center = fCanvas.getVpCenter ? fCanvas.getVpCenter() : { x: fCanvas.width / 2, y: fCanvas.height / 2 };
       const fill = canvasState.fillColor === 'transparent' ? 'rgba(99,102,241,0.08)' : canvasState.fillColor;
       const stroke = canvasState.strokeColor;
@@ -278,7 +327,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       isMouseDown = false;
     };
 
-    // Keyboard delete
+    // Keyboard navigation & delete
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName || '')) return;
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -287,6 +336,27 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
           active.forEach((o: any) => fCanvas.remove(o));
           fCanvas.discardActiveObject();
           fCanvas.requestRenderAll();
+        }
+      }
+      // H → PAN tool shortcut
+      if (e.key === 'h' || e.key === 'H') {
+        useStore.getState().setActiveTool('PAN');
+      }
+      // V → SELECT tool shortcut
+      if (e.key === 'v' || e.key === 'V') {
+        useStore.getState().setActiveTool('SELECT');
+      }
+      // Arrow keys: move / pan across the whiteboard smoothly!
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) && !fCanvas.getActiveObject()) {
+        e.preventDefault();
+        const step = e.shiftKey ? 250 : 100;
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowLeft') dx = step;
+        else if (e.key === 'ArrowRight') dx = -step;
+        else if (e.key === 'ArrowUp') dy = step;
+        else if (e.key === 'ArrowDown') dy = -step;
+        if (typeof (window as any).__KIMIWISE_PAN__ === 'function') {
+          (window as any).__KIMIWISE_PAN__(dx, dy);
         }
       }
     };
@@ -307,20 +377,22 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full overflow-hidden"
-      style={{ touchAction: 'none', cursor: canvasState.activeTool === 'SELECT' ? 'default' : 'crosshair' }}
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{
+        backgroundColor: '#f8fafc',
+        backgroundImage: 'radial-gradient(circle, #94a3b8 1.4px, transparent 1.4px)',
+        backgroundSize: '28px 28px',
+        backgroundPosition: '0px 0px',
+        touchAction: 'none',
+        cursor: canvasState.activeTool === 'PAN' ? 'grab' : canvasState.activeTool === 'SELECT' ? 'default' : 'crosshair',
+      }}
     >
-      {/* Dot grid background — exactly like Trido */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)',
-          backgroundSize: '28px 28px',
-          opacity: 0.65,
-        }}
+      {/* Fabric.js canvas — transparent background so dynamic grid shows through */}
+      <canvas
+        ref={canvasElRef}
+        className="absolute inset-0"
+        style={{ zIndex: 1 }}
       />
-
-      <canvas ref={canvasElRef} className="absolute inset-0" />
     </div>
   );
 };

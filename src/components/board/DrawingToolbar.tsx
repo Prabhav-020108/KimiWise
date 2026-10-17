@@ -16,6 +16,7 @@ import {
   Star,
   Highlighter,
   GitBranch,
+  Move,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import type { CreatorTool } from '../../types';
@@ -105,6 +106,7 @@ export const DrawingToolbar: React.FC = () => {
         return;
       if (e.key === 'Escape') { close(); setActiveTool('SELECT'); }
       else if (e.key === 'v' || e.key === 'V') { close(); setActiveTool('SELECT'); }
+      else if (e.key === 'h' || e.key === 'H') { close(); setActiveTool('PAN'); }
       else if (e.key === 'p' || e.key === 'P') { close(); setActiveTool('PENCIL'); }
       else if (e.key === 'e' || e.key === 'E') { close(); setActiveTool('ERASER'); }
       else if (e.key === 't' || e.key === 'T') { close(); setActiveTool('TEXT'); }
@@ -132,6 +134,14 @@ export const DrawingToolbar: React.FC = () => {
             active={activeTool === 'SELECT'}
             title="Select (V)"
             onClick={() => { setActiveTool('SELECT'); close(); }}
+          />
+
+          {/* 1b. PAN / MOVE tool */}
+          <Btn
+            icon={Move}
+            active={activeTool === 'PAN'}
+            title="Move / Pan across Whiteboard (H or Space+drag)"
+            onClick={() => { setActiveTool('PAN'); close(); }}
           />
 
           <div className="w-5 h-px bg-slate-200" />

@@ -454,7 +454,8 @@ Include ${Math.max(2, questionCount - 1)} multiple choice and 1 essay question.`
 
 export interface BoardLessonResponse {
   title: string;
-  type: 'flowchart' | 'mindmap';
+  type: 'flowchart' | 'mindmap' | 'svg';
+  svg?: string;
   nodes: {
     label: string;
     sublabel: string;
@@ -477,14 +478,23 @@ export const generateBoardLessonGemma = async (
   const ai = getClient(customKey);
   const model = getModel(modelOverride);
 
-  const prompt = `You are a world-class AI digital classroom educator.
-The student/teacher asked: "${topic}"
+  const isSvgPrompt = /svg|image|draw|illustration|vector|diagram|cycle|anatomy|architecture|structure|circuit/i.test(topic);
 
-Generate a structured whiteboard lesson with an accurate sequential flowchart/mindmap AND detailed pedagogical lesson notes.
-Return ONLY valid JSON matching this exact structure (no markdown, no backticks outside JSON):
+  const prompt = `You are a world-class AI digital classroom educator and blackboard illustrator.
+The user asked: "${topic}"
+
+CRITICAL INSTRUCTIONS FOR ACCURACY AND VISUAL QUALITY:
+1. Provide an extremely accurate, domain-specific, and rigorous response for: "${topic}".
+2. Do NOT be vague or generic. Use real equations, code, or technical mechanisms.
+3. ${isSvgPrompt ? 'GENERATE A HIGH-QUALITY VECTOR SVG in the "svg" field. The SVG must be standalone, valid XML (<svg viewBox="0 0 600 450" xmlns="http://www.w3.org/2000/svg">...</svg>), with vibrant modern colors (#6366f1, #3b82f6, #10b981, #f59e0b, #0f172a), rounded boxes, crisp connecting arrows, and readable text labels for every part.' : 'Optionally include a clean standalone SVG in the "svg" field if a visual diagram directly illustrates this concept.'}
+4. Provide 4 to 6 sequential workflow nodes accurately mapping out the concept.
+5. Provide detailed pedagogical lesson notes with a concrete real-world analogy and high-yield takeaway.
+
+Return ONLY valid JSON matching this exact structure (no markdown fences, no text outside JSON):
 {
-  "title": "Clean concise topic title (e.g. TCP 3-Way Handshake)",
-  "type": "flowchart",
+  "title": "Clean concise topic title",
+  "type": "${isSvgPrompt ? 'svg' : 'flowchart'}",
+  "svg": "<svg viewBox=\\"0 0 600 450\\" xmlns=\\"http://www.w3.org/2000/svg\\">...</svg>",
   "nodes": [
     {
       "label": "Short Step Title (max 28 chars)",
@@ -520,7 +530,7 @@ Return ONLY valid JSON matching this exact structure (no markdown, no backticks 
       "Key principle 2 explaining the mechanism",
       "Key principle 3 addressing common confusion"
     ],
-    "realWorldAnalogy": "An intuitive everyday analogy (e.g. phone call, post office, conveyor belt) that helps students visualize it instantly.",
+    "realWorldAnalogy": "An intuitive everyday analogy that helps students visualize it instantly.",
     "takeaway": "The single most important rule, formula, or takeaway to remember."
   }
 }
@@ -528,9 +538,7 @@ Return ONLY valid JSON matching this exact structure (no markdown, no backticks 
 Requirements:
 1. Provide between 4 to 6 accurate, domain-specific steps.
 2. The type of the first node must be "start", intermediate nodes "process" or "decision", and last node "end".
-3. If the user specifically asks for a "mindmap" or "concept map", set "type" to "mindmap".
-4. Ensure extreme scientific, mathematical, or algorithmic correctness.
-Return ONLY raw JSON.`;
+3. Return ONLY raw JSON.`;
 
   const response = await generateContentWithFallback(
     ai,

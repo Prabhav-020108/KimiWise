@@ -26,7 +26,8 @@ export interface LessonNotes {
 
 export interface DiagramData {
   title: string;
-  type: 'flowchart' | 'mindmap';
+  type: 'flowchart' | 'mindmap' | 'svg';
+  svg?: string;
   nodes: DiagramNode[];
   lessonNotes?: LessonNotes;
 }
@@ -471,21 +472,22 @@ class AgentDrawingService {
       setAgentState({
         isThinking: true,
         isActing: true,
-        agentMessage: `Analyzing concept with Gemma AI: "${promptText.slice(0, 32)}..."`,
+        agentMessage: `Reasoning with Gemma AI: "${promptText.slice(0, 36)}..."`,
         cursorPosition: { x: 500, y: 180 },
       });
 
       const aiPromise = aiService.generateBoardLesson(promptText);
       const timeoutPromise = new Promise<{ lesson: BoardLessonData }>((_, reject) =>
-        setTimeout(() => reject(new Error('AI board lesson timeout')), 3800)
+        setTimeout(() => reject(new Error('AI board lesson timeout')), 20000)
       );
 
       const res = await Promise.race([aiPromise, timeoutPromise]);
-      if (res?.lesson?.nodes && res.lesson.nodes.length >= 3) {
+      if (res?.lesson) {
         diagram = {
           title: res.lesson.title || promptText,
-          type: res.lesson.type || 'flowchart',
-          nodes: res.lesson.nodes.map((n) => ({
+          type: res.lesson.type || (res.lesson.svg ? 'svg' : 'flowchart'),
+          svg: res.lesson.svg,
+          nodes: (res.lesson.nodes || []).map((n) => ({
             label: n.label,
             sublabel: n.sublabel,
             type: n.type,
@@ -494,7 +496,7 @@ class AgentDrawingService {
         };
       }
     } catch (aiErr) {
-      console.warn('[AgentDrawingService] Dynamic AI generation fallback to offline catalog:', aiErr);
+      console.warn('[AgentDrawingService] Dynamic AI generation fallback to catalog:', aiErr);
     }
 
     // Fall back to offline educational catalog if AI generation timed out or failed
@@ -544,13 +546,14 @@ class AgentDrawingService {
 
       // 3. Clear existing objects on current slide to draw fresh lesson
       fCanvas.clear();
-      fCanvas.backgroundColor = '#ffffff';
+      fCanvas.backgroundColor = 'transparent';
       fCanvas.requestRenderAll();
+      (window as any).__KIMIWISE_SYNC_GRID__?.();
 
       const cx = Math.max(320, containerW / 2);
       const cy = Math.max(260, containerH / 2);
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       // 4. Animate Agent Drawing Step by Step
       setAgentState({
@@ -559,7 +562,9 @@ class AgentDrawingService {
         agentMessage: `KimiWise Agent Illustrating: "${diagram.title}"`,
       });
 
-      if (diagram.type === 'mindmap') {
+      if (diagram.svg) {
+        await this.drawSvgIllustration(diagram, cx, cy, containerW, fCanvas, setAgentState);
+      } else if (diagram.type === 'mindmap') {
         await this.drawMindmap(diagram, cx, cy, containerW, fCanvas, setAgentState);
       } else {
         await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState);
@@ -1249,6 +1254,76 @@ class AgentDrawingService {
         setAgentState
       );
     }
+  }
+
+  // ── Draw SVG Illustration with High Resolution Vector Group ────────────────
+  private async drawSvgIllustration(
+    diagram: DiagramData,
+    cx: number,
+    cy: number,
+    containerW: number,
+    fCanvas: any,
+    setAgentState: (state: any) => void
+  ): Promise<boolean> {
+    if (!diagram.svg) return false;
+    const hasNotes = Boolean(diagram.lessonNotes);
+    const isDualPane = hasNotes && containerW >= 950;
+    const svgX = isDualPane ? Math.max(260, cx - 220) : cx;
+    const svgY = cy;
+
+    setAgentState({
+      cursorPosition: { x: svgX, y: svgY },
+      agentMessage: `Rendering High-Precision Vector Visual: "${diagram.title}"`,
+    });
+    await new Promise((r) => setTimeout(r, 200));
+
+    return new Promise((resolve) => {
+      try {
+        FabricClass.loadSVGFromString(diagram.svg, async (objects: any[], options: any) => {
+          if (!objects || objects.length === 0) {
+            await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState);
+            resolve(false);
+            return;
+          }
+
+          const svgGroup = FabricClass.util.groupSVGElements(objects, options);
+          const maxDim = Math.max(svgGroup.width, svgGroup.height) || 450;
+          const targetBox = isDualPane ? 440 : 540;
+          const scale = targetBox / maxDim;
+
+          svgGroup.set({
+            left: svgX,
+            top: svgY,
+            scaleX: scale,
+            scaleY: scale,
+            originX: 'center',
+            originY: 'center',
+            selectable: true,
+          });
+          svgGroup.setCoords();
+          fCanvas.add(svgGroup);
+          fCanvas.setActiveObject(svgGroup);
+          fCanvas.requestRenderAll();
+
+          // Draw accompanying blackboard notes if available
+          if (diagram.lessonNotes && isDualPane) {
+            const notesX = Math.min(containerW - 250, cx + 250);
+            await this.drawLessonNotesCard(
+              diagram.lessonNotes,
+              notesX,
+              Math.max(60, cy - 220),
+              440,
+              fCanvas,
+              setAgentState
+            );
+          }
+          resolve(true);
+        });
+      } catch (err) {
+        console.warn('[agentDrawingService] SVG load failed:', err);
+        resolve(false);
+      }
+    });
   }
 }
 

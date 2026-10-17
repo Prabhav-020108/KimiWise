@@ -47,17 +47,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parts: [{ text: m.text }],
     })) as Content[];
 
-    const response = await client.models.generateContent({
+    const candidateModels = [
       model,
-      contents: [...gemmaHistory, { role: 'user', parts: [{ text: message }] }],
-      config: {
-        systemInstruction: (systemPrompt as string | undefined) || 'You are KimiWise, a helpful AI classroom assistant.',
-        temperature: 0.7,
-        maxOutputTokens: 4096,
-      },
-    });
+      'gemma-4-26b-a4b-it',
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+    ];
 
-    return res.json({ response: response.text?.trim() ?? '', mode: 'gemma' });
+    let responseText = '';
+    let lastError: unknown = null;
+
+    for (const m of candidateModels) {
+      try {
+        const response = await client.models.generateContent({
+          model: m,
+          contents: [...gemmaHistory, { role: 'user', parts: [{ text: message }] }],
+          config: {
+            systemInstruction:
+              (systemPrompt as string | undefined) ||
+              'You are KimiWise, an expert AI classroom educator. Provide insightful, technically accurate, clear explanations.',
+            temperature: 0.5,
+            maxOutputTokens: 4096,
+          },
+        });
+        responseText = response.text?.trim() ?? '';
+        if (responseText) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!responseText) {
+      throw lastError || new Error('No response from AI models');
+    }
+
+    return res.json({ response: responseText, mode: 'gemma' });
   } catch (err) {
     console.error('[/api/ai/chat]', err);
     return res.status(500).json({ error: 'Chat AI failed', detail: String(err) });

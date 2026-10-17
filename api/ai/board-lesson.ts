@@ -37,51 +37,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const model = (modelOverride as string | undefined) || process.env.GEMMA_MODEL || 'gemma-4';
     const client = new GoogleGenAI({ apiKey });
 
-    const systemPrompt = `You are a world-class AI digital classroom educator.
-The student/teacher asked: "${prompt}"
+    const isSvgPrompt = /svg|image|draw|illustration|vector|diagram|cycle|anatomy|architecture|structure|circuit/i.test(prompt);
 
-Generate a structured whiteboard lesson with an accurate sequential flowchart/mindmap AND detailed pedagogical lesson notes.
-Return ONLY valid JSON matching this exact structure (no markdown, no backticks outside JSON):
+    const systemPrompt = `You are a world-class AI digital classroom educator and blackboard illustrator.
+The user asked: "${prompt}"
+
+CRITICAL INSTRUCTIONS FOR ACCURACY AND VISUAL QUALITY:
+1. Provide an extremely accurate, specific, and technically detailed response for: "${prompt}".
+2. Do NOT be vague, random, or generic. Use real terminology, formulas, code, or protocols specific to the subject.
+3. ${isSvgPrompt ? 'GENERATE A HIGH-QUALITY VECTOR SVG in the "svg" field. The SVG must be standalone, valid XML (<svg viewBox="0 0 600 450" xmlns="http://www.w3.org/2000/svg">...</svg>), with vibrant modern colors (#6366f1, #3b82f6, #10b981, #f59e0b, #0f172a), rounded boxes, crisp connecting arrows, and readable text labels for every part.' : 'Optionally include a clean standalone SVG in the "svg" field if a visual diagram directly illustrates this concept.'}
+4. Provide 4 to 6 sequential workflow nodes accurately mapping out the concept.
+5. Provide detailed pedagogical lesson notes with a concrete real-world analogy and high-yield takeaway.
+
+Return ONLY valid JSON matching this exact structure (no markdown fences, no text outside JSON):
 {
-  "title": "Clean concise topic title (e.g. Binary Search Algorithm)",
-  "type": "flowchart",
+  "title": "Precise topic title",
+  "type": "${isSvgPrompt ? 'svg' : 'flowchart'}",
+  "svg": "<svg viewBox=\\"0 0 600 450\\" xmlns=\\"http://www.w3.org/2000/svg\\">...</svg>",
   "nodes": [
     {
-      "label": "Short Step Title (max 28 chars)",
-      "sublabel": "Concise 1-sentence technical explanation of what occurs in this step",
+      "label": "Accurate Step 1 Title (max 28 chars)",
+      "sublabel": "Precise technical explanation of this phase",
       "type": "start"
     },
     {
       "label": "Step 2 Title",
-      "sublabel": "Explanation of phase 2",
+      "sublabel": "Precise technical explanation of phase 2",
       "type": "process"
     },
     {
-      "label": "Conditional/Decision or Core Pivot",
-      "sublabel": "Explanation of decision or verification",
+      "label": "Pivot / Verification Condition",
+      "sublabel": "Precise condition or check",
       "type": "decision"
     },
     {
       "label": "Step 4 Title",
-      "sublabel": "Explanation of phase 4",
+      "sublabel": "Phase 4 technical details",
       "type": "process"
     },
     {
-      "label": "Final Outcome / Completion",
+      "label": "Final Outcome",
       "sublabel": "Final state description",
       "type": "end"
     }
   ],
   "lessonNotes": {
-    "title": "Core Concept Breakdown & Mechanism",
-    "overview": "Clear 2-3 sentence overview explaining how this works from first principles.",
+    "title": "Deep Concept Breakdown & Mechanism",
+    "overview": "Rigorous explanation of how this works from first principles.",
     "keyPrinciples": [
-      "Key principle 1 with technical detail",
-      "Key principle 2 explaining the mechanism",
-      "Key principle 3 addressing common pitfalls"
+      "Principle 1 with domain-specific depth",
+      "Principle 2 explaining internal mechanism",
+      "Principle 3 addressing edge cases or common misconceptions"
     ],
-    "realWorldAnalogy": "A relatable real-world comparison that makes the concept instantly click.",
-    "takeaway": "One memorable takeaway rule."
+    "realWorldAnalogy": "A relatable real-world comparison that makes the concept click instantly.",
+    "takeaway": "The core rule, equation, or takeaway to remember."
   }
 }`;
 
@@ -89,6 +98,9 @@ Return ONLY valid JSON matching this exact structure (no markdown, no backticks 
       model,
       'gemma-4-26b-a4b-it',
       'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
       'gemini-3.5-flash-lite',
       'gemini-3-flash-preview',
       'gemini-3.8-flash',
@@ -104,7 +116,7 @@ Return ONLY valid JSON matching this exact structure (no markdown, no backticks 
           model: m,
           contents: [{ role: 'user', parts: [{ text: systemPrompt }] }],
           config: {
-            temperature: 0.4,
+            temperature: 0.2,
             maxOutputTokens: 4096,
           },
         });

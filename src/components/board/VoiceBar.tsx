@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic, MicOff, Sparkles, Loader2, Send, Undo2, Redo2,
   Trash2, ZoomIn, ZoomOut, Maximize2, Plus,
+  Move, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
 } from 'lucide-react';
 import { useVoice } from '../../hooks/useVoice';
 import { AudioVisualizer } from './AudioVisualizer';
@@ -146,9 +147,30 @@ function executeActionsOnCanvas(actions: any[]) {
           });
           break;
         }
+        case 'CREATE_SVG': {
+          const svgStr = p.svg || p.svgContent || '';
+          if (svgStr && FabricClass.loadSVGFromString) {
+            FabricClass.loadSVGFromString(svgStr, (objects: any[], options: any) => {
+              if (objects && objects.length) {
+                const group = FabricClass.util.groupSVGElements(objects, options);
+                group.set({
+                  left: p.x || cx,
+                  top: p.y || 250,
+                  originX: 'center',
+                  originY: 'center',
+                  selectable: true,
+                  id: action.id,
+                });
+                fCanvas.add(group);
+                fCanvas.requestRenderAll();
+              }
+            });
+          }
+          break;
+        }
         case 'CLEAR_CANVAS':
           fCanvas.clear();
-          fCanvas.backgroundColor = '#ffffff';
+          fCanvas.backgroundColor = 'transparent';
           break;
         default: break;
       }
@@ -160,7 +182,8 @@ function executeActionsOnCanvas(actions: any[]) {
 // ── Bottom Action Bar (Trido & CodeBuddy style) ───────────────────────────────
 export const VoiceBar: React.FC = () => {
   const { isRecording, transcript, interimTranscript, audioData, startRecording, stopRecording, resetTranscript } = useVoice();
-  const { agent, setAgentState, addChatMessage, canvas, setZoom } = useStore();
+  const { agent, setAgentState, addChatMessage, canvas, setZoom, setActiveTool } = useStore();
+  const activeTool = canvas.activeTool;
 
   const [customInput, setCustomInput] = useState('');
   const [isInputExpanded, setIsInputExpanded] = useState(false);
@@ -169,6 +192,12 @@ export const VoiceBar: React.FC = () => {
 
   const displayText = transcript || interimTranscript || customInput;
   const isThinking = agent.isThinking;
+
+  const handlePan = (dx: number, dy: number) => {
+    if (typeof (window as any).__KIMIWISE_PAN__ === 'function') {
+      (window as any).__KIMIWISE_PAN__(dx, dy);
+    }
+  };
 
   // ── Auto-submit voice transcript when recording stops ─────────────────────
   useEffect(() => {
@@ -223,10 +252,12 @@ export const VoiceBar: React.FC = () => {
     else {
       fCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
       setZoom(1);
+      (window as any).__KIMIWISE_SYNC_GRID__?.();
       return;
     }
     fCanvas.setZoom(zoom);
     setZoom(zoom);
+    (window as any).__KIMIWISE_SYNC_GRID__?.();
   };
 
   const zoomPercent = Math.round((canvas.zoom ?? 1) * 100);
@@ -426,20 +457,67 @@ export const VoiceBar: React.FC = () => {
         </button>
       </div>
 
-      {/* ── 3. Zoom Controls Pill ─────────────────────────────────────────── */}
-      <div className="hidden md:flex items-center gap-2 bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-full px-3.5 py-2">
+      {/* ── 3. Zoom & Board Move Controls Pill ─────────────────────────────── */}
+      <div className="hidden md:flex items-center gap-1.5 bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-full px-3 py-1.5">
+        {/* Pan / Move Mode Toggle (Arrow move icon) */}
+        <button
+          onClick={() => setActiveTool(activeTool === 'PAN' ? 'SELECT' : 'PAN')}
+          title={activeTool === 'PAN' ? 'Pan active — drag canvas anywhere to move' : 'Move / Pan whiteboard (H)'}
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90 ${
+            activeTool === 'PAN'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/30'
+              : 'text-slate-500 hover:text-blue-600 hover:bg-slate-100'
+          }`}
+        >
+          <Move size={15} />
+        </button>
+
+        {/* Directional Move Arrow Cluster */}
+        <div className="flex items-center bg-slate-100/90 rounded-lg p-0.5">
+          <button
+            onClick={() => handlePan(160, 0)}
+            title="Move left (ArrowLeft)"
+            className="w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white transition-colors active:scale-90"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            onClick={() => handlePan(0, 160)}
+            title="Move up (ArrowUp)"
+            className="w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white transition-colors active:scale-90"
+          >
+            <ChevronUp size={14} />
+          </button>
+          <button
+            onClick={() => handlePan(0, -160)}
+            title="Move down (ArrowDown)"
+            className="w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white transition-colors active:scale-90"
+          >
+            <ChevronDown size={14} />
+          </button>
+          <button
+            onClick={() => handlePan(-160, 0)}
+            title="Move right (ArrowRight)"
+            className="w-6 h-6 rounded flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-white transition-colors active:scale-90"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
+
+        <div className="w-px h-4 bg-slate-200 mx-0.5" />
+
         <button
           onClick={() => handleZoom('out')}
           title="Zoom out"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors active:scale-90"
         >
-          <ZoomOut size={16} />
+          <ZoomOut size={15} />
         </button>
 
         <button
           onClick={() => handleZoom('reset')}
-          title="Reset zoom"
-          className="min-w-[42px] px-1 text-center font-bold text-xs text-slate-700 hover:text-blue-600 transition-colors"
+          title="Reset zoom to 100%"
+          className="min-w-[38px] px-1 text-center font-bold text-xs text-slate-700 hover:text-blue-600 transition-colors"
         >
           {zoomPercent}%
         </button>
@@ -449,7 +527,7 @@ export const VoiceBar: React.FC = () => {
           title="Zoom in"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors active:scale-90"
         >
-          <ZoomIn size={16} />
+          <ZoomIn size={15} />
         </button>
 
         <div className="w-px h-4 bg-slate-200 mx-0.5" />
@@ -459,7 +537,7 @@ export const VoiceBar: React.FC = () => {
           title="Fit screen"
           className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors active:scale-90"
         >
-          <Maximize2 size={15} />
+          <Maximize2 size={14} />
         </button>
       </div>
     </div>

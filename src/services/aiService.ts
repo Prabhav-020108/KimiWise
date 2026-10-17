@@ -124,7 +124,8 @@ export const getTeacherInsights = (students: unknown[]): Promise<{ insights: unk
 
 export interface BoardLessonData {
   title: string;
-  type: 'flowchart' | 'mindmap';
+  type: 'flowchart' | 'mindmap' | 'svg';
+  svg?: string;
   nodes: {
     label: string;
     sublabel: string;

@@ -11,6 +11,7 @@ export interface Point {
 
 export type CreatorTool =
   | 'SELECT'
+  | 'PAN'
   | 'PENCIL'
   | 'ERASER'
   | 'TEXT'
