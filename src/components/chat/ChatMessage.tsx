@@ -3,7 +3,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { Bot, User, Copy, Check, Sparkles, Clock } from 'lucide-react';
+import { Bot, User, Copy, Check, Sparkles, Clock, ArrowRight } from 'lucide-react';
+import { useStore } from '../../store';
 import type { ChatMessage as ChatMessageType } from '../../types';
 
 interface ChatMessageProps {
@@ -112,6 +113,20 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               >
                 {message.text}
               </ReactMarkdown>
+
+              {/* Jump to Canvas Interactive Action Button */}
+              {(message.text.toLowerCase().includes('canvas') || message.text.toLowerCase().includes('whiteboard')) && (
+                <div className="mt-3 pt-2.5 border-t border-slate-100">
+                  <button
+                    onClick={() => useStore.getState().setActiveView('board')}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold border border-blue-200/80 shadow-xs transition-all active:scale-95 cursor-pointer group"
+                  >
+                    <Sparkles size={13} className="text-blue-600 group-hover:rotate-12 transition-transform" />
+                    <span>Open Whiteboard Canvas</span>
+                    <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <span>{message.text}</span>

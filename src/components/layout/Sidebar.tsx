@@ -9,15 +9,18 @@ import {
   Clock,
   Calculator,
   GitBranch,
-  Volume2,
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { useStore } from '../../store';
+import { useVoice } from '../../hooks/useVoice';
 
 export const Sidebar: React.FC = () => {
-  const { ui, setActiveView, setSidebarOpen, lesson } = useStore();
+  const { ui, setActiveView, setSidebarOpen, lesson, setTimerOpen, setCalcOpen, setDiagramModalOpen } = useStore();
+  const { isRecording, startRecording, stopRecording } = useVoice();
 
   const primaryNav = [
     { id: 'board' as const, label: 'Whiteboard', icon: LayoutDashboard },
@@ -122,32 +125,44 @@ export const Sidebar: React.FC = () => {
           </span>
           <div className="grid grid-cols-2 gap-1.5 mt-2">
             <button
-              onClick={() => setActiveView('board')}
-              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all"
+              onClick={() => setTimerOpen(true)}
+              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-amber-300 transition-all cursor-pointer"
+              title="Open Classroom Timer"
             >
               <Clock size={13} className="text-amber-500" />
               <span>Timer</span>
             </button>
             <button
-              onClick={() => setActiveView('board')}
-              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all"
+              onClick={() => setCalcOpen(true)}
+              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
+              title="Open Classroom Calculator"
             >
               <Calculator size={13} className="text-emerald-500" />
               <span>Calc</span>
             </button>
             <button
-              onClick={() => setActiveView('board')}
-              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all"
+              onClick={() => setDiagramModalOpen(true)}
+              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all cursor-pointer"
+              title="Generate Whiteboard Diagram"
             >
               <GitBranch size={13} className="text-blue-500" />
               <span>Diagram</span>
             </button>
             <button
-              onClick={() => setActiveView('board')}
-              className="flex items-center gap-2 p-2 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs hover:border-blue-300 transition-all"
+              onClick={() => {
+                setActiveView('board');
+                if (isRecording) stopRecording();
+                else startRecording();
+              }}
+              className={`flex items-center gap-2 p-2 rounded-xl text-xs font-semibold border shadow-xs transition-all cursor-pointer ${
+                isRecording
+                  ? 'bg-rose-50 border-rose-300 text-rose-600 animate-pulse'
+                  : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700 hover:border-purple-300'
+              }`}
+              title={isRecording ? 'Stop Voice Input' : 'Start Voice Input'}
             >
-              <Volume2 size={13} className="text-indigo-500" />
-              <span>Voice</span>
+              {isRecording ? <MicOff size={13} className="text-rose-500" /> : <Mic size={13} className="text-purple-500" />}
+              <span>{isRecording ? 'Stop Mic' : 'Voice'}</span>
             </button>
           </div>
         </div>

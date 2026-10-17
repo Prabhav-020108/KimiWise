@@ -14,6 +14,8 @@ import {
   ChevronRight,
   PaintBucket,
   Star,
+  Highlighter,
+  GitBranch,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import type { CreatorTool } from '../../types';
@@ -81,7 +83,7 @@ const Btn: React.FC<{
 );
 
 export const DrawingToolbar: React.FC = () => {
-  const { canvas, setActiveTool, setStrokeColor, setStrokeWidth, setFillColor } = useStore();
+  const { canvas, setActiveTool, setStrokeColor, setStrokeWidth, setFillColor, setDiagramModalOpen } = useStore();
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null);
   const [isShapeFilled, setIsShapeFilled] = useState(false);
 
@@ -151,12 +153,26 @@ export const DrawingToolbar: React.FC = () => {
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">DRAW MODE</div>
               <div className="flex gap-1 mb-3">
                 <button
-                  onClick={() => setActiveTool('PENCIL')}
+                  onClick={() => { setActiveTool('PENCIL'); setStrokeWidth(3); }}
                   className={`flex-1 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors ${
-                    activeTool === 'PENCIL' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    activeTool === 'PENCIL' && brushWidth <= 6 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   <Pencil size={12} /> Pen
+                </button>
+                <button
+                  onClick={() => {
+                    setActiveTool('PENCIL');
+                    setStrokeWidth(18);
+                    if (brushColor === '#000000' || brushColor === '#1e1b4b') {
+                      setStrokeColor('#f59e0b');
+                    }
+                  }}
+                  className={`flex-1 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-colors ${
+                    activeTool === 'PENCIL' && brushWidth > 6 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <Highlighter size={12} /> Marker
                 </button>
                 <button
                   onClick={() => setActiveTool('ERASER')}
@@ -264,7 +280,6 @@ export const DrawingToolbar: React.FC = () => {
             icon={ImageIcon}
             title="Insert Image"
             onClick={() => {
-              // Image upload handled by hidden file input
               const input = document.createElement('input');
               input.type = 'file';
               input.accept = 'image/*';
@@ -277,8 +292,23 @@ export const DrawingToolbar: React.FC = () => {
                   const FabricClass = (window as any).fabric;
                   if (!fCanvas || !FabricClass) return;
                   FabricClass.Image.fromURL(ev.target?.result as string, (img: any) => {
-                    img.scaleToWidth(Math.min(img.width, 400));
+                    if (!img) return;
+                    const center = fCanvas.getVpCenter ? fCanvas.getVpCenter() : { x: 500, y: 350 };
+                    const maxDim = 450;
+                    if (img.width > maxDim || img.height > maxDim) {
+                      img.scaleToWidth(Math.min(img.width, maxDim));
+                    }
+                    img.set({
+                      left: center.x,
+                      top: center.y,
+                      originX: 'center',
+                      originY: 'center',
+                      cornerColor: '#3b82f6',
+                      cornerSize: 9,
+                      transparentCorners: false,
+                    });
                     fCanvas.add(img);
+                    fCanvas.setActiveObject(img);
                     fCanvas.requestRenderAll();
                   });
                 };
@@ -286,6 +316,13 @@ export const DrawingToolbar: React.FC = () => {
               };
               input.click();
             }}
+          />
+
+          {/* 6. DIAGRAM BUILDER */}
+          <Btn
+            icon={GitBranch}
+            title="AI Diagram Builder"
+            onClick={() => setDiagramModalOpen(true)}
           />
 
           <div className="w-5 h-px bg-slate-200" />

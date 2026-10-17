@@ -41,46 +41,54 @@ async function generateContentWithFallback(
     delete sanitizedConfig.thinkingConfig;
   }
 
-  try {
-    return await ai.models.generateContent({
+  const candidateModels = Array.from(
+    new Set([
       model,
-      contents: contents as any,
-      config: sanitizedConfig as any,
-    });
-  } catch (err: unknown) {
-    const msg = String(err);
-    if (msg.includes('Thinking budget is not supported') && sanitizedConfig.thinkingConfig) {
-      delete sanitizedConfig.thinkingConfig;
-      return await ai.models.generateContent({
-        model,
-        contents: contents as any,
-        config: sanitizedConfig as any,
-      });
-    }
+      'gemma-4-26b-a4b-it',
+      'gemini-flash-latest',
+      'gemini-3.5-flash-lite',
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3.1-flash-lite',
+      ...(CONFIG.ai.gemma.fallbackModels || []),
+    ])
+  ).filter((m) => m !== 'gemma-4-31b-it' && m !== 'gemma-3-27b-it');
 
-    const fallback = CONFIG.ai.gemma.fallbackModel;
-    if (
-      model !== fallback &&
-      (msg.includes('503') ||
-        msg.includes('404') ||
-        msg.includes('NOT_FOUND') ||
-        msg.includes('UNAVAILABLE') ||
-        msg.includes('INTERNAL') ||
-        msg.includes('high demand') ||
-        msg.includes('no longer available'))
-    ) {
-      console.warn(
-        `[gemmaAdapter] Model ${model} failed (${msg.slice(0, 100)}). Falling back to ${fallback}`
-      );
-      delete sanitizedConfig.thinkingConfig;
+  let lastError: unknown = null;
+
+  for (const currentModel of candidateModels) {
+    try {
       return await ai.models.generateContent({
-        model: fallback,
+        model: currentModel,
         contents: contents as any,
         config: sanitizedConfig as any,
       });
+    } catch (err: unknown) {
+      lastError = err;
+      const msg = String(err);
+
+      // If error is thinking budget incompatibility, strip it and retry this model once
+      if (msg.includes('Thinking budget is not supported') && sanitizedConfig.thinkingConfig) {
+        delete sanitizedConfig.thinkingConfig;
+        try {
+          return await ai.models.generateContent({
+            model: currentModel,
+            contents: contents as any,
+            config: sanitizedConfig as any,
+          });
+        } catch (retryErr) {
+          lastError = retryErr;
+        }
+      }
+
+      console.warn(
+        `[gemmaAdapter] Model ${currentModel} failed (${String(lastError).slice(0, 90)}). Trying next candidate...`
+      );
     }
-    throw err;
   }
+
+  throw lastError;
 }
 
 // ── Board Agent — multimodal (canvas image + function calling) ────────────────
@@ -441,3 +449,107 @@ Include ${Math.max(2, questionCount - 1)} multiple choice and 1 essay question.`
     return null;
   }
 };
+
+// ── Smart Whiteboard Lesson & Diagram Generator ───────────────────────────────
+
+export interface BoardLessonResponse {
+  title: string;
+  type: 'flowchart' | 'mindmap';
+  nodes: {
+    label: string;
+    sublabel: string;
+    type: 'start' | 'process' | 'decision' | 'end';
+  }[];
+  lessonNotes: {
+    title: string;
+    overview: string;
+    keyPrinciples: string[];
+    realWorldAnalogy: string;
+    takeaway: string;
+  };
+}
+
+export const generateBoardLessonGemma = async (
+  topic: string,
+  customKey?: string,
+  modelOverride?: string
+): Promise<BoardLessonResponse | null> => {
+  const ai = getClient(customKey);
+  const model = getModel(modelOverride);
+
+  const prompt = `You are a world-class AI digital classroom educator.
+The student/teacher asked: "${topic}"
+
+Generate a structured whiteboard lesson with an accurate sequential flowchart/mindmap AND detailed pedagogical lesson notes.
+Return ONLY valid JSON matching this exact structure (no markdown, no backticks outside JSON):
+{
+  "title": "Clean concise topic title (e.g. TCP 3-Way Handshake)",
+  "type": "flowchart",
+  "nodes": [
+    {
+      "label": "Short Step Title (max 28 chars)",
+      "sublabel": "Concise 1-sentence technical explanation of what occurs in this step",
+      "type": "start"
+    },
+    {
+      "label": "Step 2 Title",
+      "sublabel": "Explanation of phase 2",
+      "type": "process"
+    },
+    {
+      "label": "Conditional/Decision or Core Pivot",
+      "sublabel": "Explanation of decision or verification",
+      "type": "decision"
+    },
+    {
+      "label": "Step 4 Title",
+      "sublabel": "Explanation of phase 4",
+      "type": "process"
+    },
+    {
+      "label": "Final Outcome / Completion",
+      "sublabel": "Final state description",
+      "type": "end"
+    }
+  ],
+  "lessonNotes": {
+    "title": "Core Concept Breakdown & Mechanism",
+    "overview": "Clear 2-3 sentence overview explaining how this works from first principles.",
+    "keyPrinciples": [
+      "Key principle 1 with technical detail",
+      "Key principle 2 explaining the mechanism",
+      "Key principle 3 addressing common confusion"
+    ],
+    "realWorldAnalogy": "An intuitive everyday analogy (e.g. phone call, post office, conveyor belt) that helps students visualize it instantly.",
+    "takeaway": "The single most important rule, formula, or takeaway to remember."
+  }
+}
+
+Requirements:
+1. Provide between 4 to 6 accurate, domain-specific steps.
+2. The type of the first node must be "start", intermediate nodes "process" or "decision", and last node "end".
+3. If the user specifically asks for a "mindmap" or "concept map", set "type" to "mindmap".
+4. Ensure extreme scientific, mathematical, or algorithmic correctness.
+Return ONLY raw JSON.`;
+
+  const response = await generateContentWithFallback(
+    ai,
+    model,
+    [{ role: 'user', parts: [{ text: prompt }] }],
+    {
+      systemInstruction: 'You are an elite educational AI producing structured blackboard teaching materials.',
+      temperature: 0.2,
+      thinkingConfig: { thinkingBudget: 0 },
+    }
+  );
+
+  const text = response.text?.trim() || '';
+  try {
+    const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned) as BoardLessonResponse;
+  } catch (e) {
+    console.warn('[gemmaAdapter] Failed to parse board lesson JSON:', e);
+    return null;
+  }
+};
+

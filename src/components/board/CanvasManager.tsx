@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react';
+import { fabric } from 'fabric';
 import { useStore } from '../../store';
 import type { CreatorTool } from '../../types';
-
-declare const fabric: any;
 
 interface CanvasManagerProps {
   onCanvasReady?: (canvas: any) => void;
@@ -13,18 +12,20 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
   const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<any>(null);
 
-  const { canvas: canvasState, setActiveTool, setZoom, setCanvasObjects } = useStore();
+  const { canvas: canvasState, setActiveTool, setZoom, ui } = useStore();
 
   const isPanningRef = useRef<boolean>(false);
   const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const activeToolRef = useRef<CreatorTool>(canvasState.activeTool);
   activeToolRef.current = canvasState.activeTool;
+  const onCanvasReadyRef = useRef(onCanvasReady);
+  onCanvasReadyRef.current = onCanvasReady;
 
-  // ── Initialize Fabric Canvas ─────────────────────────────────────────────
+  // ── Initialize Fabric Canvas (Stable: only run once on mount) ───────────
   useEffect(() => {
     if (!canvasElRef.current || !containerRef.current) return;
 
-    const FabricClass = (window as any).fabric || (typeof fabric !== 'undefined' ? fabric : null);
+    const FabricClass = (fabric as any)?.fabric || fabric || (window as any).fabric;
     if (!FabricClass) {
       console.warn('[CanvasManager] Fabric.js not loaded');
       return;
@@ -37,7 +38,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     const fCanvas = new FabricClass.Canvas(canvasElRef.current, {
       width,
       height,
-      backgroundColor: 'transparent',
+      backgroundColor: '#ffffff',
       selection: true,
       preserveObjectStacking: true,
       stopContextMenu: true,
@@ -90,7 +91,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       }
     });
 
-    // ── Sync objects to store ──────────────────────────────────────────────
+    // ── Sync objects to store without triggering loop ─────────────────────
     const syncObjects = () => {
       const objects = fCanvas.getObjects().map((obj: any) => ({
         id: obj.id || String(Math.random()),
@@ -102,7 +103,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
         fill: obj.fill || '#ffffff',
         angle: obj.angle || 0,
       }));
-      setCanvasObjects(objects);
+      useStore.getState().setCanvasObjects(objects);
     };
 
     fCanvas.on('object:added', syncObjects);
@@ -114,11 +115,12 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       if (!containerRef.current || !fabricRef.current) return;
       fabricRef.current.setWidth(containerRef.current.clientWidth);
       fabricRef.current.setHeight(containerRef.current.clientHeight);
+      fabricRef.current.calcOffset();
       fabricRef.current.renderAll();
     };
 
     window.addEventListener('resize', handleResize);
-    if (onCanvasReady) onCanvasReady(fCanvas);
+    if (onCanvasReadyRef.current) onCanvasReadyRef.current(fCanvas);
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -126,81 +128,181 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       fabricRef.current = null;
       delete (window as any).__KIMIWISE_CANVAS__;
     };
-  }, [onCanvasReady, setZoom, setCanvasObjects]);
+  }, [setZoom]);
 
-  // ── Sync active tool drawing mode ─────────────────────────────────────────
+  // ── Sync viewport dimensions when activeView becomes board ──────────────
   useEffect(() => {
-    const fCanvas = fabricRef.current;
-    if (!fCanvas) return;
-
-    if (canvasState.activeTool === 'PENCIL') {
-      fCanvas.isDrawingMode = true;
-      fCanvas.freeDrawingBrush.color = canvasState.strokeColor;
-      fCanvas.freeDrawingBrush.width = canvasState.strokeWidth;
-    } else {
-      fCanvas.isDrawingMode = false;
+    if (ui.activeView === 'board' && fabricRef.current && containerRef.current) {
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      if (w > 0 && h > 0) {
+        fabricRef.current.setWidth(w);
+        fabricRef.current.setHeight(h);
+        fabricRef.current.calcOffset();
+        fabricRef.current.renderAll();
+      }
     }
+  }, [ui.activeView]);
 
-    if (canvasState.activeTool === 'SELECT') {
-      fCanvas.defaultCursor = 'default';
-      fCanvas.selection = true;
-    } else if (canvasState.activeTool === 'ERASER') {
-      fCanvas.defaultCursor = 'crosshair';
-    } else {
-      fCanvas.defaultCursor = 'crosshair';
-    }
-  }, [canvasState.activeTool, canvasState.strokeColor, canvasState.strokeWidth]);
-
-  // ── Shape / Text placement on click ───────────────────────────────────────
+  // ── Sync active tool drawing & shape creation ───────────────────────────
   useEffect(() => {
     const fCanvas = fabricRef.current;
     if (!fCanvas) return;
     const FabricClass = (window as any).fabric;
     if (!FabricClass) return;
 
-    const handleClick = (opt: any) => {
-      if (opt.target || isPanningRef.current) return;
-      const pointer = fCanvas.getPointer(opt.e);
-      const tool = activeToolRef.current;
-      let obj: any = null;
+    if (canvasState.activeTool === 'PENCIL') {
+      fCanvas.isDrawingMode = true;
+      fCanvas.selection = false;
+      fCanvas.freeDrawingBrush = new FabricClass.PencilBrush(fCanvas);
+      fCanvas.freeDrawingBrush.color = canvasState.strokeColor;
+      fCanvas.freeDrawingBrush.width = canvasState.strokeWidth;
+      fCanvas.freeDrawingBrush.decimate = 2.0;
+      fCanvas.defaultCursor = 'crosshair';
+      fCanvas.discardActiveObject();
+      fCanvas.requestRenderAll();
+    } else if (canvasState.activeTool === 'ERASER') {
+      fCanvas.isDrawingMode = true;
+      fCanvas.selection = false;
+      fCanvas.freeDrawingBrush = new FabricClass.PencilBrush(fCanvas);
+      fCanvas.freeDrawingBrush.color = '#ffffff';
+      fCanvas.freeDrawingBrush.width = Math.max(canvasState.strokeWidth * 4, 24);
+      fCanvas.freeDrawingBrush.decimate = 2.0;
+      fCanvas.defaultCursor = 'cell';
+      fCanvas.discardActiveObject();
+      fCanvas.requestRenderAll();
+    } else if (canvasState.activeTool === 'SELECT') {
+      fCanvas.isDrawingMode = false;
+      fCanvas.selection = true;
+      fCanvas.defaultCursor = 'default';
+      fCanvas.getObjects().forEach((o: any) => { o.selectable = true; o.evented = true; });
+      fCanvas.requestRenderAll();
+    } else {
+      // Shape / Text tool triggered from toolbar:
+      // Instantly spawn at viewport center (like Trido), select it, and reset to SELECT
+      fCanvas.isDrawingMode = false;
+      fCanvas.selection = true;
+      const center = fCanvas.getVpCenter ? fCanvas.getVpCenter() : { x: fCanvas.width / 2, y: fCanvas.height / 2 };
       const fill = canvasState.fillColor === 'transparent' ? 'rgba(99,102,241,0.08)' : canvasState.fillColor;
       const stroke = canvasState.strokeColor;
       const sw = canvasState.strokeWidth;
+      let obj: any = null;
 
-      if (tool === 'RECTANGLE') {
-        obj = new FabricClass.Rect({ left: pointer.x - 75, top: pointer.y - 45, width: 150, height: 90, rx: 12, ry: 12, fill, stroke, strokeWidth: sw });
-      } else if (tool === 'CIRCLE') {
-        obj = new FabricClass.Circle({ left: pointer.x - 50, top: pointer.y - 50, radius: 50, fill, stroke, strokeWidth: sw });
-      } else if (tool === 'TRIANGLE') {
-        obj = new FabricClass.Triangle({ left: pointer.x - 50, top: pointer.y - 50, width: 100, height: 90, fill, stroke, strokeWidth: sw });
-      } else if (tool === 'TEXT') {
-        obj = new FabricClass.IText('Double-click to edit', { left: pointer.x, top: pointer.y, fontSize: canvasState.fontSize || 20, fill: canvasState.strokeColor || '#1e293b', fontFamily: 'Inter, sans-serif' });
-      } else if (tool === 'ARROW' || tool === 'LINE') {
-        obj = new FabricClass.Line([pointer.x, pointer.y, pointer.x + 120, pointer.y], { stroke, strokeWidth: sw || 2 });
-      } else if (tool === 'STAR') {
-        // Create star using polygon points
-        const cx = pointer.x, cy = pointer.y;
-        const points: { x: number; y: number }[] = [];
+      if (canvasState.activeTool === 'RECTANGLE') {
+        obj = new FabricClass.Rect({
+          left: center.x, top: center.y, width: 150, height: 95, rx: 12, ry: 12,
+          fill, stroke, strokeWidth: sw, originX: 'center', originY: 'center',
+          shadow: new FabricClass.Shadow({ color: 'rgba(0,0,0,0.08)', blur: 10, offsetY: 3 }),
+        });
+      } else if (canvasState.activeTool === 'CIRCLE') {
+        obj = new FabricClass.Circle({
+          left: center.x, top: center.y, radius: 52,
+          fill, stroke, strokeWidth: sw, originX: 'center', originY: 'center',
+          shadow: new FabricClass.Shadow({ color: 'rgba(0,0,0,0.08)', blur: 10, offsetY: 3 }),
+        });
+      } else if (canvasState.activeTool === 'TRIANGLE') {
+        obj = new FabricClass.Triangle({
+          left: center.x, top: center.y, width: 110, height: 100,
+          fill, stroke, strokeWidth: sw, originX: 'center', originY: 'center',
+          shadow: new FabricClass.Shadow({ color: 'rgba(0,0,0,0.08)', blur: 10, offsetY: 3 }),
+        });
+      } else if (canvasState.activeTool === 'TEXT') {
+        obj = new FabricClass.IText('Double-click to edit', {
+          left: center.x, top: center.y, fontSize: canvasState.fontSize || 22,
+          fill: canvasState.strokeColor || '#1e293b', fontFamily: 'Inter, sans-serif',
+          originX: 'center', originY: 'center',
+        });
+      } else if (canvasState.activeTool === 'LINE') {
+        obj = new FabricClass.Line([center.x - 70, center.y, center.x + 70, center.y], {
+          stroke, strokeWidth: sw || 3, originX: 'center', originY: 'center',
+        });
+      } else if (canvasState.activeTool === 'ARROW') {
+        const arrowLine = new FabricClass.Line([center.x - 70, center.y, center.x + 70, center.y], {
+          stroke, strokeWidth: sw || 3, selectable: false, evented: false,
+        });
+        const arrowHead = new FabricClass.Polygon([{ x: 0, y: -9 }, { x: 16, y: 0 }, { x: 0, y: 9 }], {
+          fill: stroke, left: center.x + 70, top: center.y, originX: 'center', originY: 'center', selectable: false, evented: false,
+        });
+        obj = new FabricClass.Group([arrowLine, arrowHead], { left: center.x, top: center.y, originX: 'center', originY: 'center' });
+      } else if (canvasState.activeTool === 'STAR') {
+        const points = [];
         for (let i = 0; i < 10; i++) {
           const r = i % 2 === 0 ? 50 : 22;
           const a = (Math.PI / 5) * i - Math.PI / 2;
-          points.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+          points.push({ x: r * Math.cos(a), y: r * Math.sin(a) });
         }
-        obj = new FabricClass.Polygon(points, { fill: fill || '#fbbf24', stroke, strokeWidth: sw });
+        obj = new FabricClass.Polygon(points, {
+          left: center.x, top: center.y, fill, stroke, strokeWidth: sw, originX: 'center', originY: 'center',
+          shadow: new FabricClass.Shadow({ color: 'rgba(0,0,0,0.08)', blur: 10, offsetY: 3 }),
+        });
       }
 
       if (obj) {
         obj.id = `obj_${Date.now()}`;
         fCanvas.add(obj);
         fCanvas.setActiveObject(obj);
+        if (canvasState.activeTool === 'TEXT') {
+          obj.enterEditing?.();
+          obj.selectAll?.();
+        }
         fCanvas.requestRenderAll();
         setActiveTool('SELECT');
       }
+    }
+  }, [canvasState.activeTool, canvasState.strokeColor, canvasState.strokeWidth, canvasState.fillColor, canvasState.fontSize, setActiveTool]);
+
+  // ── Eraser & Keyboard handlers ─────────────────────────────────────────────
+  useEffect(() => {
+    const fCanvas = fabricRef.current;
+    if (!fCanvas) return;
+
+    let isMouseDown = false;
+    const handleMouseDown = (opt: any) => {
+      isMouseDown = true;
+      if (activeToolRef.current === 'ERASER' && opt.target) {
+        fCanvas.remove(opt.target);
+        fCanvas.discardActiveObject();
+        fCanvas.requestRenderAll();
+      }
     };
 
-    fCanvas.on('mouse:down', handleClick);
-    return () => fCanvas.off('mouse:down', handleClick);
-  }, [canvasState.fillColor, canvasState.strokeColor, canvasState.strokeWidth, canvasState.fontSize, setActiveTool]);
+    const handleMouseMove = (opt: any) => {
+      if (isMouseDown && activeToolRef.current === 'ERASER' && opt.target) {
+        fCanvas.remove(opt.target);
+        fCanvas.discardActiveObject();
+        fCanvas.requestRenderAll();
+      }
+    };
+
+    const handleMouseUp = () => {
+      isMouseDown = false;
+    };
+
+    // Keyboard delete
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName || '')) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        const active = fCanvas.getActiveObjects();
+        if (active && active.length > 0) {
+          active.forEach((o: any) => fCanvas.remove(o));
+          fCanvas.discardActiveObject();
+          fCanvas.requestRenderAll();
+        }
+      }
+    };
+
+    fCanvas.on('mouse:down', handleMouseDown);
+    fCanvas.on('mouse:move', handleMouseMove);
+    fCanvas.on('mouse:up', handleMouseUp);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      fCanvas.off('mouse:down', handleMouseDown);
+      fCanvas.off('mouse:move', handleMouseMove);
+      fCanvas.off('mouse:up', handleMouseUp);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <div

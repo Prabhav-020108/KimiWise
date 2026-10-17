@@ -29,7 +29,11 @@ interface AiStatusState {
   activeModel: string;
 }
 
-// ── Canvas ───────────────────────────────────────────────────────────────────
+export interface SlideData {
+  id: string;
+  name: string;
+  canvasJson?: any;
+}
 
 interface CanvasState {
   activeTool: CreatorTool;
@@ -39,6 +43,7 @@ interface CanvasState {
   fontSize: number;
   currentPageIndex: number;
   totalPages: number;
+  slides: SlideData[];
   canvasObjects: CanvasObjectData[];
   domElements: Record<string, DomElementState>;
   isDrawing: boolean;
@@ -120,6 +125,9 @@ interface UIState {
   activeView: 'board' | 'codelab' | 'teacher' | 'quiz' | 'chat' | 'settings';
   theme: 'dark' | 'light';
   notifications: Notification[];
+  isTimerOpen: boolean;
+  isCalcOpen: boolean;
+  isDiagramModalOpen: boolean;
 }
 
 interface Notification {
@@ -158,6 +166,9 @@ interface KimiWiseStore {
   setZoom: (zoom: number) => void;
   setCanvasObjects: (objects: CanvasObjectData[]) => void;
   setDomElements: (elements: Record<string, DomElementState>) => void;
+  addSlide: () => void;
+  setSlide: (index: number) => void;
+  deleteSlide: (index: number) => void;
 
   // Session Actions
   setCurrentSession: (session: BoardSession | null) => void;
@@ -199,6 +210,9 @@ interface KimiWiseStore {
   // UI Actions
   setSidebarOpen: (open: boolean) => void;
   setActiveView: (view: UIState['activeView']) => void;
+  setTimerOpen: (open: boolean) => void;
+  setCalcOpen: (open: boolean) => void;
+  setDiagramModalOpen: (open: boolean) => void;
   toggleTheme: () => void;
   addNotification: (notif: Omit<Notification, 'id' | 'timestamp'>) => void;
   removeNotification: (id: string) => void;
@@ -215,7 +229,7 @@ const defaultVoiceConfig: VoiceConfig = {
   autoSubmit: true,
   noiseSuppression: true,
   echoCancellation: true,
-  language: 'en-IN',
+  language: 'en-US',
   silenceDetectionTimeout: 2,
 };
 
@@ -234,12 +248,13 @@ export const useStore = create<KimiWiseStore>()((set) => ({
 
   canvas: {
     activeTool: 'SELECT',
-    strokeColor: '#ffffff',
+    strokeColor: '#1e1b4b',
     fillColor: 'transparent',
-    strokeWidth: 2,
+    strokeWidth: 3,
     fontSize: 16,
     currentPageIndex: 0,
     totalPages: 1,
+    slides: [{ id: 'slide_1', name: 'Slide 1', canvasJson: null }],
     canvasObjects: [],
     domElements: {},
     isDrawing: false,
@@ -305,6 +320,9 @@ export const useStore = create<KimiWiseStore>()((set) => ({
     activeView: 'board',
     theme: 'light',
     notifications: [],
+    isTimerOpen: false,
+    isCalcOpen: false,
+    isDiagramModalOpen: false,
   },
 
   agent: {
@@ -346,6 +364,107 @@ export const useStore = create<KimiWiseStore>()((set) => ({
 
   setDomElements: (elements) =>
     set((s) => ({ canvas: { ...s.canvas, domElements: elements } })),
+
+  addSlide: () => {
+    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    set((s) => {
+      const currentIdx = s.canvas.currentPageIndex;
+      const currentSlides = [...s.canvas.slides];
+      if (fCanvas) {
+        currentSlides[currentIdx] = {
+          ...currentSlides[currentIdx],
+          canvasJson: fCanvas.toJSON(),
+        };
+      }
+      const newSlide: SlideData = {
+        id: `slide_${Date.now()}`,
+        name: `Slide ${currentSlides.length + 1}`,
+        canvasJson: { objects: [], background: '#ffffff' },
+      };
+      currentSlides.push(newSlide);
+      const newIdx = currentSlides.length - 1;
+      if (fCanvas) {
+        fCanvas.clear();
+        fCanvas.backgroundColor = '#ffffff';
+        fCanvas.requestRenderAll();
+      }
+      return {
+        canvas: {
+          ...s.canvas,
+          slides: currentSlides,
+          currentPageIndex: newIdx,
+          totalPages: currentSlides.length,
+          canvasObjects: [],
+        },
+      };
+    });
+  },
+
+  setSlide: (index: number) => {
+    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    set((s) => {
+      if (index < 0 || index >= s.canvas.slides.length || index === s.canvas.currentPageIndex) return s;
+      const currentIdx = s.canvas.currentPageIndex;
+      const currentSlides = [...s.canvas.slides];
+      if (fCanvas) {
+        currentSlides[currentIdx] = {
+          ...currentSlides[currentIdx],
+          canvasJson: fCanvas.toJSON(),
+        };
+      }
+      const targetSlide = currentSlides[index];
+      if (fCanvas && targetSlide) {
+        if (targetSlide.canvasJson && targetSlide.canvasJson.objects) {
+          fCanvas.loadFromJSON(targetSlide.canvasJson, () => {
+            fCanvas.backgroundColor = '#ffffff';
+            fCanvas.requestRenderAll();
+          });
+        } else {
+          fCanvas.clear();
+          fCanvas.backgroundColor = '#ffffff';
+          fCanvas.requestRenderAll();
+        }
+      }
+      return {
+        canvas: {
+          ...s.canvas,
+          slides: currentSlides,
+          currentPageIndex: index,
+          totalPages: currentSlides.length,
+        },
+      };
+    });
+  },
+
+  deleteSlide: (index: number) => {
+    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    set((s) => {
+      if (s.canvas.slides.length <= 1) return s;
+      const currentSlides = s.canvas.slides.filter((_, i) => i !== index);
+      const newIdx = Math.max(0, Math.min(index, currentSlides.length - 1));
+      const targetSlide = currentSlides[newIdx];
+      if (fCanvas && targetSlide) {
+        if (targetSlide.canvasJson && targetSlide.canvasJson.objects) {
+          fCanvas.loadFromJSON(targetSlide.canvasJson, () => {
+            fCanvas.backgroundColor = '#ffffff';
+            fCanvas.requestRenderAll();
+          });
+        } else {
+          fCanvas.clear();
+          fCanvas.backgroundColor = '#ffffff';
+          fCanvas.requestRenderAll();
+        }
+      }
+      return {
+        canvas: {
+          ...s.canvas,
+          slides: currentSlides,
+          currentPageIndex: newIdx,
+          totalPages: currentSlides.length,
+        },
+      };
+    });
+  },
 
   // ── Session Actions ────────────────────────────────────────────────────────
 
@@ -446,6 +565,15 @@ export const useStore = create<KimiWiseStore>()((set) => ({
 
   setActiveView: (activeView) =>
     set((s) => ({ ui: { ...s.ui, activeView } })),
+
+  setTimerOpen: (isTimerOpen) =>
+    set((s) => ({ ui: { ...s.ui, isTimerOpen } })),
+
+  setCalcOpen: (isCalcOpen) =>
+    set((s) => ({ ui: { ...s.ui, isCalcOpen } })),
+
+  setDiagramModalOpen: (isDiagramModalOpen) =>
+    set((s) => ({ ui: { ...s.ui, isDiagramModalOpen } })),
 
   toggleTheme: () =>
     set((s) => ({ ui: { ...s.ui, theme: s.ui.theme === 'dark' ? 'light' : 'dark' } })),

@@ -23,6 +23,8 @@ export const useVoice = (): UseVoiceReturn => {
   const [isSupported, setIsSupported] = useState<boolean>(true);
 
   const recognitionRef = useRef<any>(null);
+  const shouldRecordRef = useRef<boolean>(false);
+  const accumulatedTranscriptRef = useRef<string>('');
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -75,6 +77,7 @@ export const useVoice = (): UseVoiceReturn => {
   }, [setAudioLevel]);
 
   const stopRecording = useCallback(() => {
+    shouldRecordRef.current = false;
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
@@ -90,6 +93,10 @@ export const useVoice = (): UseVoiceReturn => {
   const startRecording = useCallback(async () => {
     setError(null);
     setInterimTranscript('');
+    shouldRecordRef.current = true;
+    accumulatedTranscriptRef.current = '';
+    setLocalTranscript('');
+    setTranscript('');
 
     // 1. Initialize Microphone Audio Stream for Visualizer
     try {
@@ -125,7 +132,8 @@ export const useVoice = (): UseVoiceReturn => {
 
     if (!SpeechRecognition) {
       setError('Web Speech API is not supported in this browser. Please use Chrome, Edge, or Safari.');
-      setRecording(true);
+      shouldRecordRef.current = false;
+      setRecording(false);
       return;
     }
 
@@ -146,32 +154,44 @@ export const useVoice = (): UseVoiceReturn => {
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const item = event.results[i];
           if (item.isFinal) {
-            currentFinal += item[0].transcript;
+            currentFinal += ' ' + item[0].transcript;
           } else {
-            currentInterim += item[0].transcript;
+            currentInterim += ' ' + item[0].transcript;
           }
         }
 
-        if (currentFinal) {
-          setLocalTranscript((prev) => {
-            const updated = prev ? `${prev} ${currentFinal.trim()}` : currentFinal.trim();
-            setTranscript(updated);
-            return updated;
-          });
+        if (currentFinal.trim()) {
+          const updated = (accumulatedTranscriptRef.current + ' ' + currentFinal.trim()).trim();
+          accumulatedTranscriptRef.current = updated;
+          setLocalTranscript(updated);
+          setTranscript(updated);
         }
-        setInterimTranscript(currentInterim);
+        setInterimTranscript(currentInterim.trim());
       };
 
       recognition.onerror = (event: any) => {
-        if (event.error === 'no-speech') return;
+        if (event.error === 'no-speech' || event.error === 'aborted') return;
         console.error('[useVoice] Speech recognition error:', event.error);
-        setError(`Speech error: ${event.error}`);
+        if (event.error === 'not-allowed') {
+          setError('Microphone access denied. Please allow microphone permissions.');
+          stopRecording();
+        } else {
+          setError(`Speech error: ${event.error}`);
+        }
       };
 
       recognition.onend = () => {
-        // If still supposed to be recording, restart or stop
-        if (voice.isRecording) {
-          stopRecording();
+        // Prevent premature cutoffs: Web Speech API stops after 1-2s of natural pause.
+        // If user hasn't explicitly clicked stop, automatically restart recognition!
+        if (shouldRecordRef.current) {
+          try {
+            recognition.start();
+          } catch {
+            // If already restarting or ended, ignore
+          }
+        } else {
+          cleanupAudio();
+          setRecording(false);
         }
       };
 
@@ -184,14 +204,15 @@ export const useVoice = (): UseVoiceReturn => {
     }
   }, [
     voice.voiceConfig,
-    voice.isRecording,
     setRecording,
     setTranscript,
     updateAudioData,
+    cleanupAudio,
     stopRecording,
   ]);
 
   const resetTranscript = useCallback(() => {
+    accumulatedTranscriptRef.current = '';
     setLocalTranscript('');
     setInterimTranscript('');
     setTranscript('');
@@ -199,6 +220,7 @@ export const useVoice = (): UseVoiceReturn => {
 
   useEffect(() => {
     return () => {
+      shouldRecordRef.current = false;
       cleanupAudio();
       if (recognitionRef.current) {
         try {

@@ -9,6 +9,9 @@ import { TeacherView } from './components/teacher/TeacherView';
 import { QuizView } from './components/tools/QuizView';
 import { ChatView } from './components/chat/ChatView';
 import { SettingsView } from './components/layout/SettingsView';
+import { FloatingTimer } from './components/classroom/FloatingTimer';
+import { FloatingCalc } from './components/classroom/FloatingCalc';
+import { DiagramModal } from './components/classroom/DiagramModal';
 import { aiService } from './services/aiService';
 
 export function App() {
@@ -65,12 +68,20 @@ export function App() {
         <div className="flex-1 flex overflow-hidden">
           <Sidebar />
           <main className="flex-1 relative overflow-hidden bg-slate-50">
-            {ui.activeView === 'board' && <BoardView />}
+            {/* Whiteboard Canvas is permanently mounted so drawing operations & Fabric canvas persist across view changes */}
+            <div className={`w-full h-full ${ui.activeView === 'board' ? 'block' : 'hidden'}`}>
+              <BoardView />
+            </div>
             {ui.activeView === 'codelab' && <CodeLabView />}
             {ui.activeView === 'teacher' && <TeacherView />}
             {ui.activeView === 'quiz' && <QuizView />}
             {ui.activeView === 'chat' && <ChatView />}
             {ui.activeView === 'settings' && <SettingsView />}
+
+            {/* Floating Classroom Tools */}
+            <FloatingTimer />
+            <FloatingCalc />
+            <DiagramModal />
           </main>
         </div>
       </div>

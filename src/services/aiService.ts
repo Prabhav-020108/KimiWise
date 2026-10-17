@@ -122,11 +122,32 @@ export const generateQuiz = (req: QuizRequest): Promise<{ quiz: unknown; mode: s
 export const getTeacherInsights = (students: unknown[]): Promise<{ insights: unknown[]; mode: string }> =>
   post('/insights', { students });
 
+export interface BoardLessonData {
+  title: string;
+  type: 'flowchart' | 'mindmap';
+  nodes: {
+    label: string;
+    sublabel: string;
+    type: 'start' | 'process' | 'decision' | 'end';
+  }[];
+  lessonNotes: {
+    title: string;
+    overview: string;
+    keyPrinciples: string[];
+    realWorldAnalogy: string;
+    takeaway: string;
+  };
+}
+
+export const generateBoardLesson = (prompt: string): Promise<{ lesson: BoardLessonData; mode: string }> =>
+  post('/board-lesson', { prompt });
+
 // ── Unified aiService Client Export ───────────────────────────────────────────
 
 export const aiService = {
   checkStatus: checkAiStatus,
   generateBoardActions,
+  generateBoardLesson,
   performOcr,
   askTutor,
   transcribeAudio,
@@ -149,4 +170,5 @@ export const aiService = {
   },
   getTeacherInsights,
 };
+
 

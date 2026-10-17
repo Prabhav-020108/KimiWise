@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Maximize2 } from 'lucide-react';
 import { CanvasManager } from './CanvasManager';
 import { DrawingToolbar } from './DrawingToolbar';
 import { DomOverlay } from './DomOverlay';
 import { VoiceBar } from './VoiceBar';
 import { PageBar } from './PageBar';
+import { AgentCursor } from './AgentCursor';
 import { useStore } from '../../store';
 
 export const BoardView: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
   const { setActiveView } = useStore();
+
+  const handleCanvasReady = useCallback(() => {
+    setIsReady(true);
+  }, []);
 
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -22,10 +27,13 @@ export const BoardView: React.FC = () => {
   return (
     <div className="relative w-full h-full overflow-hidden select-none bg-slate-50">
       {/* 1. Fullscreen Fabric.js Canvas */}
-      <CanvasManager onCanvasReady={() => setIsReady(true)} />
+      <CanvasManager onCanvasReady={handleCanvasReady} />
 
       {/* 2. Rich HTML Overlays (code blocks, cards) */}
       <DomOverlay />
+
+      {/* 2.5 Live AI Drawing Agent HUD & Cursor */}
+      <AgentCursor />
 
       {/* 3. Floating Left Toolbar (Trido pill style) */}
       <DrawingToolbar />

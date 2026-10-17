@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { Sparkles, Bot, Trash2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { aiService } from '../../services/aiService';
+import { agentDrawingService, parseEducationalPrompt } from '../../services/agentDrawingService';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 
@@ -20,16 +21,25 @@ export const ChatPanel: React.FC = () => {
   const handleSendMessage = async (text: string, imageUrl?: string) => {
     if ((!text.trim() && !imageUrl) || chat.isTyping) return;
 
+    const trimmed = text.trim();
     const userMessageId = crypto.randomUUID();
     addChatMessage({
       id: userMessageId,
       role: 'user',
-      text: text.trim(),
+      text: trimmed,
       imageUrl,
       timestamp: Date.now(),
     });
 
     setChatTyping(true);
+
+    // Check if the user is asking to create or draw a whiteboard visual
+    const isVisualRequest = /(flowchart|roadmap|diagram|mindmap|draw|canvas|whiteboard|architecture|workflow|chart|teach|explain|concept|pipeline|process|steps|breakdown)/i.test(trimmed);
+
+    // If visual request, launch the Drawing Agent immediately
+    if (isVisualRequest) {
+      agentDrawingService.drawOnCanvas(trimmed);
+    }
 
     try {
       // Build history for multi-turn conversation
@@ -46,8 +56,8 @@ export const ChatPanel: React.FC = () => {
         // If image is attached, run OCR/Vision or multimodal prompt
         const startTime = Date.now();
         const ocrRes = await aiService.performOcr(imageUrl);
-        const visionPrompt = text.trim()
-          ? `[Student provided an image with the query]: ${text.trim()}\n\n[Vision Extracted Content]:\n${ocrRes.extractedCode}\n\n[Explanation]: ${ocrRes.explanation}`
+        const visionPrompt = trimmed
+          ? `[Student provided an image with the query]: ${trimmed}\n\n[Vision Extracted Content]:\n${ocrRes.extractedCode}\n\n[Explanation]: ${ocrRes.explanation}`
           : `[Student provided an image for analysis]:\n\n[Vision Extracted Content]:\n${ocrRes.extractedCode}\n\n${ocrRes.explanation}`;
 
         const chatRes = await aiService.chat(visionPrompt, history);
@@ -55,10 +65,20 @@ export const ChatPanel: React.FC = () => {
         latencyMs = Date.now() - startTime;
         model = 'Gemma 4 Vision';
       } else {
-        const chatRes = await aiService.chat(text.trim(), history);
+        const chatRes = await aiService.chat(trimmed, history);
         responseText = chatRes.textResponse;
         latencyMs = chatRes.latencyMs;
         model = chatRes.model || 'Gemma 4';
+      }
+
+      // If user requested a visual flowchart/diagram, enrich response with clear structured steps
+      if (isVisualRequest) {
+        const diagramData = parseEducationalPrompt(trimmed);
+        const stepsMarkdown = diagramData.nodes
+          .map((n, i) => `${i + 1}. **${n.label}**${n.sublabel ? ` — *${n.sublabel}*` : ''}`)
+          .join('\n');
+
+        responseText = `I've created the whiteboard visual lesson for **"${diagramData.title}"**!\n\nThe AI Drawing Agent is actively illustrating the flowchart on the interactive canvas with each phase:\n\n${stepsMarkdown}\n\nTake a look at the interactive canvas to watch the agent draw!`;
       }
 
       addChatMessage({
