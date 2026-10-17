@@ -61,13 +61,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       inlineData: { data: base64Data, mimeType },
     };
 
-    const response = await client.models.generateContent({
+    const candidateModels = [
       model,
-      contents: [{ role: 'user', parts: [imagePart, { text: 'Extract all code from this image.' }] }],
-      config: { systemInstruction: OCR_SYSTEM_PROMPT, temperature: 0.1, maxOutputTokens: 4096 },
-    });
+      'gemma-4-26b-a4b-it',
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+    ];
 
-    const extractedCode = response.text?.trim() ?? '';
+    let extractedCode = '';
+    let lastError: unknown = null;
+
+    for (const m of candidateModels) {
+      try {
+        const response = await client.models.generateContent({
+          model: m,
+          contents: [{ role: 'user', parts: [imagePart, { text: 'Extract all code from this image.' }] }],
+          config: { systemInstruction: OCR_SYSTEM_PROMPT, temperature: 0.1, maxOutputTokens: 4096 },
+        });
+        extractedCode = response.text?.trim() ?? '';
+        if (extractedCode) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!extractedCode) {
+      throw lastError || new Error('No code detected from image');
+    }
 
     // Simple language detection heuristic
     let language = 'python';

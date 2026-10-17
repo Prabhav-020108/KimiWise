@@ -64,13 +64,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       parts: [{ text: m.text }],
     })) as Content[];
 
-    const response = await client.models.generateContent({
+    const candidateModels = [
       model,
-      contents: [...gemmaHistory, { role: 'user', parts: [{ text: contextPrompt }] }],
-      config: { systemInstruction: TUTOR_SYSTEM_PROMPT, temperature: 0.6, maxOutputTokens: 4096 },
-    });
+      'gemma-4-26b-a4b-it',
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+    ];
 
-    return res.json({ response: response.text?.trim() ?? '', mode: 'gemma' });
+    let responseText = '';
+    let lastError: unknown = null;
+
+    for (const m of candidateModels) {
+      try {
+        const response = await client.models.generateContent({
+          model: m,
+          contents: [...gemmaHistory, { role: 'user', parts: [{ text: contextPrompt }] }],
+          config: { systemInstruction: TUTOR_SYSTEM_PROMPT, temperature: 0.6, maxOutputTokens: 4096 },
+        });
+        responseText = response.text?.trim() ?? '';
+        if (responseText) break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!responseText) {
+      throw lastError || new Error('No response from tutor AI models');
+    }
+
+    return res.json({ response: responseText, mode: 'gemma' });
   } catch (err) {
     console.error('[/api/ai/tutor]', err);
     return res.status(500).json({ error: 'Tutor AI failed', detail: String(err) });

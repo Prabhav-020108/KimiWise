@@ -66,13 +66,33 @@ Return a JSON object (no markdown):
 
 Make 4-6 engaging steps that build progressively. Each boardPrompt should be a ready-to-use command like "Draw a mind map of [concept] with key branches".`;
 
-    const response = await client.models.generateContent({
+    const candidateModels = [
       model,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: { temperature: 0.6, maxOutputTokens: 4096 },
-    });
+      'gemma-4-26b-a4b-it',
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-3-flash-preview',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+    ];
 
-    const text = response.text?.trim() ?? '{}';
+    let text = '';
+    for (const m of candidateModels) {
+      try {
+        const response = await client.models.generateContent({
+          model: m,
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          config: { temperature: 0.6, maxOutputTokens: 4096 },
+        });
+        text = response.text?.trim() ?? '';
+        if (text) break;
+      } catch (err) {
+        // try next fallback model
+      }
+    }
     let plan: unknown;
     try {
       plan = JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());

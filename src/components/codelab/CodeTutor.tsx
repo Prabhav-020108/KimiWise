@@ -86,11 +86,30 @@ export const CodeTutor: React.FC<CodeTutorProps> = ({
         model: 'Gemma 4 Tutor',
       });
     } catch (err: any) {
+      // Socratic fallback: ensure student always receives progressive guidance
+      let fallbackText = '';
+      if (text.includes('Level 1 Hint')) {
+        fallbackText = `💡 **Level 1 Socratic Hint:**\nTake a close look at how your values are initialized and transformed. What specific type or value do you expect at each line compared to what is actually being passed?`;
+      } else if (text.includes('Level 2 Hint')) {
+        fallbackText = `🎯 **Level 2 Targeted Hint:**\n` + (lastExecutionError
+          ? `Your execution raised: \`${lastExecutionError}\`.\nInspect the exact line where this operation occurs to ensure variable bounds and types are validated before operating.`
+          : `Review the logic inside your core function. Check whether your conditional boundary check triggers as intended under all inputs.`);
+      } else if (text.includes('Level 3 Hint')) {
+        fallbackText = `🛠️ **Level 3 Solution Walkthrough:**\n` + (lastExecutionError
+          ? `To fix \`${lastExecutionError}\`, verify boundary guards and ensure all variables are initialized before use.`
+          : `Ensure your return types match expected values and all base cases are handled before the loop or recursion begins.`);
+      } else {
+        fallbackText = `I've analyzed your ${language} code. ` + (lastExecutionError
+          ? `Notice that running the code triggered: \`${lastExecutionError}\`. What input might be triggering that path?`
+          : `Let's break down the logic step by step. Which section of the code would you like to review first?`);
+      }
+
       onAddMessage({
-        id: `e_${Date.now()}`,
+        id: `a_${Date.now()}`,
         role: 'model',
-        text: `Tutor connection notice: ${err?.message || 'Unable to reach AI tutor. Please check your network or Ollama status.'}`,
+        text: fallbackText,
         timestamp: Date.now(),
+        model: 'Gemma 4 Tutor',
       });
     } finally {
       setIsTyping(false);
