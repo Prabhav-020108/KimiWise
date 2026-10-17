@@ -7,7 +7,7 @@
   --font-display: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
 
   /* KimiWise brand tokens */
-  --color-kimi: #6366f1;         /* Indigo primary */
+  --color-kimi: #6366f1;
   --color-kimi-deep: #4f46e5;
   --color-kimi-light: #a5b4fc;
   --color-kimi-glow: rgba(99, 102, 241, 0.15);
@@ -35,14 +35,13 @@
 }
 
 :root {
-  /* LIGHT THEME (Crisp, Modern Slate & Indigo) */
   --background: 220 25% 97%;
   --foreground: 224 71% 4%;
   --card: 0 0% 100%;
   --card-foreground: 224 71% 4%;
   --popover: 0 0% 100%;
   --popover-foreground: 224 71% 4%;
-  --primary: 239 84% 67%;       /* Indigo-500 */
+  --primary: 239 84% 67%;
   --primary-foreground: 0 0% 100%;
   --secondary: 220 14% 96%;
   --secondary-foreground: 224 71% 4%;
@@ -58,7 +57,6 @@
 }
 
 .dark {
-  /* DARK THEME (Deep Obsidian with Glowing Indigo Accents) */
   --background: 224 71% 4%;
   --foreground: 210 20% 98%;
   --card: 224 71% 6%;
@@ -101,6 +99,7 @@
 }
 
 @layer utilities {
+  /* ── Glassmorphism ─────────────────────────────────────────────────────────── */
   .glass {
     background: rgba(255, 255, 255, 0.75);
     backdrop-filter: blur(12px);
@@ -113,13 +112,22 @@
     -webkit-backdrop-filter: blur(12px);
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
   }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
+  .dark .glass-strong {
+    background: rgba(10, 15, 30, 0.92);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(99, 102, 241, 0.15);
   }
+
+  /* ── Scrollbars ────────────────────────────────────────────────────────────── */
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
   .custom-scrollbar::-webkit-scrollbar-thumb {
     background: hsl(var(--muted-foreground) / 0.3);
     border-radius: 9999px;
@@ -127,16 +135,27 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.5);
   }
+
+  /* ── Glow effects ──────────────────────────────────────────────────────────── */
+  .glow-primary {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.25), 0 0 40px rgba(99, 102, 241, 0.1);
+  }
+  .glow-primary:hover {
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.4), 0 0 60px rgba(99, 102, 241, 0.15);
+  }
+
+  /* ── View transition ───────────────────────────────────────────────────────── */
+  .view-enter {
+    animation: viewEnter 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .view-exit {
+    animation: viewExit 0.18s ease-in both;
+  }
 }
 
-/* Base custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* ── Global scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--muted-foreground) / 0.3);
   border-radius: 9999px;
@@ -149,23 +168,200 @@
   background: hsl(var(--primary) / 0.25);
 }
 
-/* ── Board UI Animations ─────────────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════════════
+   KEYFRAME ANIMATIONS
+   ════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── View / Page transitions ─────────────────────────────────────────────────── */
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes viewExit {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+
+/* ── Board UI ────────────────────────────────────────────────────────────────── */
 @keyframes flyoutIn {
   from { opacity: 0; transform: translateX(-8px) scale(0.94); }
   to   { opacity: 1; transform: translateX(0) scale(1); }
 }
-
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(-16px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
-/* Light board background override */
+/* ── Toast notification ──────────────────────────────────────────────────────── */
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(calc(100% + 1rem)); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes toastSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(calc(100% + 1rem)); }
+}
+
+/* ── Skeleton shimmer ────────────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ── AI thinking / processing pulse ─────────────────────────────────────────── */
+@keyframes aiPulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.05); }
+}
+@keyframes aiDot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%            { transform: scale(1);   opacity: 1; }
+}
+
+/* ── Voice waveform bars ─────────────────────────────────────────────────────── */
+@keyframes waveBar {
+  0%, 100% { transform: scaleY(0.3); }
+  50%       { transform: scaleY(1); }
+}
+
+/* ── Recording indicator ─────────────────────────────────────────────────────── */
+@keyframes recordPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50%       { opacity: 0.8; box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+}
+
+/* ── Success checkmark ───────────────────────────────────────────────────────── */
+@keyframes checkDraw {
+  from { stroke-dashoffset: 100; opacity: 0; }
+  to   { stroke-dashoffset: 0;   opacity: 1; }
+}
+
+/* ── Gentle float (for island UI elements) ────────────────────────────────────── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+
+/* ── Status dot blink ────────────────────────────────────────────────────────── */
+@keyframes statusBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ── Spin for loaders ────────────────────────────────────────────────────────── */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Board background ─────────────────────────────────────────────────────────── */
 .board-bg {
   background-color: #f8fafc;
+  background-image:
+    radial-gradient(circle, rgba(99,102,241,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.dark .board-bg {
+  background-color: #0f1629;
+  background-image:
+    radial-gradient(circle, rgba(99,102,241,0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   COMPONENT HELPERS
+   ════════════════════════════════════════════════════════════════════════════════ */
+
+/* Skeleton loading */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--muted-foreground) / 0.1) 50%,
+    hsl(var(--muted)) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+/* AI thinking dots */
+.ai-thinking-dot {
+  animation: aiDot 1.4s ease-in-out infinite;
+}
+.ai-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.ai-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Voice waveform bar */
+.wave-bar {
+  animation: waveBar 0.9s ease-in-out infinite;
+  transform-origin: bottom;
+}
+.wave-bar:nth-child(1) { animation-delay: 0.0s; }
+.wave-bar:nth-child(2) { animation-delay: 0.1s; }
+.wave-bar:nth-child(3) { animation-delay: 0.2s; }
+.wave-bar:nth-child(4) { animation-delay: 0.3s; }
+.wave-bar:nth-child(5) { animation-delay: 0.1s; }
+
+/* Recording dot */
+.recording-dot {
+  animation: recordPulse 1.2s ease-in-out infinite;
+}
+
+/* Toast */
+.toast-enter {
+  animation: toastSlideIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.toast-exit {
+  animation: toastSlideOut 0.25s ease-in both;
+}
+
+/* Floating island */
+.voice-island {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Status indicator */
+.status-online {
+  animation: statusBlink 2s ease-in-out infinite;
+}
+
+/* View transition wrappers */
+.page-animate {
+  animation: viewEnter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Spin loader */
+.spin-loader {
+  animation: spinSlow 1s linear infinite;
+}
+
+/* Button active press */
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Focus ring override for accessibility */
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Smooth transitions on interactive elements */
+button, a, [role="button"] {
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s,
+              box-shadow 0.15s, opacity 0.15s, transform 0.1s;
 }
