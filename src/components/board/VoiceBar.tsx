@@ -9,6 +9,8 @@ import { AudioVisualizer } from './AudioVisualizer';
 import { useStore } from '../../store';
 import { aiService } from '../../services/aiService';
 import { agentDrawingService, parseEducationalPrompt } from '../../services/agentDrawingService';
+import { collabService } from '../../services/collabService';
+import { toast } from '../../utils/toast';
 
 // ── Action executor on Fabric canvas ──────────────────────────────────────────
 function executeActionsOnCanvas(actions: any[]) {
@@ -215,12 +217,35 @@ export const VoiceBar: React.FC = () => {
     const fCanvas = (window as any).__KIMIWISE_CANVAS__;
     if (!fCanvas) return;
     const objs = fCanvas.getObjects();
-    if (objs.length > 0) {
-      const removed = objs[objs.length - 1];
-      setUndoStack((prev) => [...prev, [removed]]);
-      fCanvas.remove(removed);
-      fCanvas.requestRenderAll();
+    if (objs.length === 0) return;
+
+    const lastObj = objs[objs.length - 1];
+    const aiBatchId = (lastObj as any).aiBatchId || (typeof lastObj.get === 'function' ? lastObj.get('aiBatchId') : undefined);
+
+    if (aiBatchId) {
+      // Find all objects belonging to this AI diagram / lesson batch
+      const batchObjs = objs.filter((obj: any) => {
+        const id = (obj as any).aiBatchId || (typeof obj.get === 'function' ? obj.get('aiBatchId') : undefined);
+        return id === aiBatchId;
+      });
+
+      if (batchObjs.length > 0) {
+        setUndoStack((prev) => [...prev, batchObjs]);
+        batchObjs.forEach((obj: any) => fCanvas.remove(obj));
+        fCanvas.discardActiveObject();
+        fCanvas.requestRenderAll();
+        collabService.sendCanvasUpdate(fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']));
+        toast.info('Reverted AI diagram generated lesson.');
+        return;
+      }
     }
+
+    // Default single-object undo for hand drawings or manual shapes
+    const removed = objs[objs.length - 1];
+    setUndoStack((prev) => [...prev, [removed]]);
+    fCanvas.remove(removed);
+    fCanvas.requestRenderAll();
+    collabService.sendCanvasUpdate(fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']));
   };
 
   const handleRedo = () => {
@@ -230,7 +255,18 @@ export const VoiceBar: React.FC = () => {
     setUndoStack((prev) => prev.slice(0, -1));
     last.forEach((obj: any) => fCanvas.add(obj));
     fCanvas.requestRenderAll();
+    collabService.sendCanvasUpdate(fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']));
   };
+
+  // Expose undo/redo handlers on window for global shortcuts
+  useEffect(() => {
+    (window as any).__KIMIWISE_UNDO__ = handleUndo;
+    (window as any).__KIMIWISE_REDO__ = handleRedo;
+    return () => {
+      delete (window as any).__KIMIWISE_UNDO__;
+      delete (window as any).__KIMIWISE_REDO__;
+    };
+  }, [undoStack]);
 
   const handleDeleteSelected = () => {
     const fCanvas = (window as any).__KIMIWISE_CANVAS__;
@@ -268,20 +304,20 @@ export const VoiceBar: React.FC = () => {
     if (!cmd || isThinking) return;
     if (isRecording) stopRecording();
 
-    const isVisual = /(flowchart|roadmap|diagram|mindmap|draw|create|make|lesson|algorithm|cycle|architecture|workflow|chart|teach|explain|concept|pipeline|process|steps|breakdown)/i.test(cmd);
+    const isGreeting = /^(hi|hello|hey|who are you|help|what can you do|good morning|good evening)\b/i.test(cmd) && cmd.length < 25;
+    const isVisual = !isGreeting;
 
-    setAgentState({ isThinking: true, isActing: true, agentMessage: `Teaching: "${cmd.slice(0, 32)}..."` });
     addChatMessage({ id: `u_${Date.now()}`, role: 'user', text: cmd, timestamp: Date.now() });
 
     try {
       if (isVisual) {
-        // Run animated Whiteboard Drawing Agent!
+        // Run animated Whiteboard Drawing Agent (thinks first, then illustrates flowchart & side notes)
         await agentDrawingService.drawOnCanvas(cmd);
         const diagramData = parseEducationalPrompt(cmd);
         addChatMessage({
           id: `a_${Date.now()}`,
           role: 'model',
-          text: `I've created the whiteboard visual lesson for "${diagramData.title}". Take a look at the interactive canvas!`,
+          text: `✨ I've illustrated the interactive whiteboard lesson for "${diagramData.title}". Check out the flowchart and blackboard notes on your canvas!`,
           timestamp: Date.now(),
           model: 'KimiWise Agent',
         });

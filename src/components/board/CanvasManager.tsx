@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { fabric } from 'fabric';
 import { useStore } from '../../store';
+import { collabService } from '../../services/collabService';
 import type { CreatorTool } from '../../types';
 
 interface CanvasManagerProps {
@@ -15,6 +16,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
   const { canvas: canvasState, setActiveTool, setZoom, ui } = useStore();
 
   const isPanningRef = useRef<boolean>(false);
+  const isErasingRef = useRef<boolean>(false);
   const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const activeToolRef = useRef<CreatorTool>(canvasState.activeTool);
   activeToolRef.current = canvasState.activeTool;
@@ -51,6 +53,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
 
     fabricRef.current = fCanvas;
     (window as any).__KIMIWISE_CANVAS__ = fCanvas;
+    collabService.setCanvas(fCanvas);
 
     // ── Sync background dotted mesh with canvas viewport ───────────────────
     const syncGrid = () => {
@@ -97,6 +100,66 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       opt.e.stopPropagation();
     });
 
+    // ── True Object-Level & Stroke Vector Eraser ────────────────────────────
+    const eraseObjectsUnderPointer = (opt: any) => {
+      if (!fCanvas) return;
+      const FabricClass = (fabric as any)?.fabric || fabric || (window as any).fabric;
+      if (!FabricClass) return;
+
+      const pointer = fCanvas.getPointer(opt.e);
+      if (!pointer) return;
+
+      const currentWidth = useStore.getState().canvas.strokeWidth || 4;
+      const radius = Math.max(16, currentWidth * 3.5);
+
+      const objects = fCanvas.getObjects();
+      if (!objects || objects.length === 0) return;
+
+      const toRemove: any[] = [];
+
+      // 1. Direct clicked object target
+      if (opt.target && typeof opt.target === 'object' && !opt.target.excludeFromExport) {
+        toRemove.push(opt.target);
+      }
+
+      // 2. Proximity and bounding box intersection check
+      const p1 = FabricClass.Point ? new FabricClass.Point(pointer.x - radius, pointer.y - radius) : null;
+      const p2 = FabricClass.Point ? new FabricClass.Point(pointer.x + radius, pointer.y + radius) : null;
+
+      for (let i = objects.length - 1; i >= 0; i--) {
+        const obj = objects[i];
+        if (!obj || obj.excludeFromExport || toRemove.includes(obj)) continue;
+
+        let hit = false;
+        if (typeof obj.containsPoint === 'function' && obj.containsPoint(pointer)) {
+          hit = true;
+        } else if (p1 && p2 && typeof obj.intersectsWithRect === 'function' && obj.intersectsWithRect(p1, p2)) {
+          hit = true;
+        } else if (typeof obj.getBoundingRect === 'function') {
+          const bound = obj.getBoundingRect(true, true);
+          if (
+            pointer.x >= bound.left - radius &&
+            pointer.x <= bound.left + bound.width + radius &&
+            pointer.y >= bound.top - radius &&
+            pointer.y <= bound.top + bound.height + radius
+          ) {
+            hit = true;
+          }
+        }
+
+        if (hit) {
+          toRemove.push(obj);
+          if (toRemove.length >= 8) break;
+        }
+      }
+
+      if (toRemove.length > 0) {
+        toRemove.forEach((item) => fCanvas.remove(item));
+        fCanvas.discardActiveObject();
+        fCanvas.requestRenderAll();
+      }
+    };
+
     // ── Pan (middle click, Space+drag, Alt+drag, or PAN tool) ──────────────
     fCanvas.on('mouse:down', (opt: any) => {
       const evt = opt.e;
@@ -107,6 +170,10 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
         lastMousePosRef.current = { x: evt.clientX, y: evt.clientY };
         fCanvas.defaultCursor = 'grabbing';
         fCanvas.setCursor('grabbing');
+      } else if (currentTool === 'ERASER') {
+        isErasingRef.current = true;
+        fCanvas.selection = false;
+        eraseObjectsUnderPointer(opt);
       }
     });
 
@@ -119,19 +186,32 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
         fCanvas.requestRenderAll();
         syncGrid();
         lastMousePosRef.current = { x: evt.clientX, y: evt.clientY };
+      } else if (isErasingRef.current && activeToolRef.current === 'ERASER') {
+        eraseObjectsUnderPointer(opt);
+      }
+
+      // Broadcast cursor coordinates to room peers
+      if (opt?.e) {
+        const pointer = fCanvas.getPointer(opt.e);
+        if (pointer && typeof pointer.x === 'number') {
+          collabService.sendCursorPosition(Math.round(pointer.x), Math.round(pointer.y));
+        }
       }
     });
 
     fCanvas.on('mouse:up', () => {
       if (isPanningRef.current) {
         isPanningRef.current = false;
-        fCanvas.selection = activeToolRef.current !== 'PAN';
+        fCanvas.selection = activeToolRef.current !== 'PAN' && activeToolRef.current !== 'ERASER';
         fCanvas.defaultCursor = activeToolRef.current === 'PAN' ? 'grab' : 'default';
         syncGrid();
       }
+      if (isErasingRef.current) {
+        isErasingRef.current = false;
+      }
     });
 
-    // ── Sync objects to store without triggering loop ─────────────────────
+    // ── Sync objects to store and broadcast to collaborators ─────────────
     const syncObjects = () => {
       const objects = fCanvas.getObjects().map((obj: any) => ({
         id: obj.id || String(Math.random()),
@@ -144,11 +224,21 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
         angle: obj.angle || 0,
       }));
       useStore.getState().setCanvasObjects(objects);
+
+      // Transmit delta/canvas update to room peers
+      if (!collabService.isRemoteSyncing) {
+        collabService.sendCanvasUpdate(fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']));
+      }
     };
 
     fCanvas.on('object:added', syncObjects);
     fCanvas.on('object:modified', syncObjects);
     fCanvas.on('object:removed', syncObjects);
+    fCanvas.on('path:created', () => {
+      if (!collabService.isRemoteSyncing) {
+        collabService.sendCanvasUpdate(fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']));
+      }
+    });
 
     // ── Resize handler ─────────────────────────────────────────────────────
     const handleResize = () => {
@@ -166,6 +256,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      collabService.setCanvas(null);
       fCanvas.dispose();
       fabricRef.current = null;
       delete (window as any).__KIMIWISE_CANVAS__;
@@ -190,7 +281,7 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
   useEffect(() => {
     const fCanvas = fabricRef.current;
     if (!fCanvas) return;
-    const FabricClass = (window as any).fabric;
+    const FabricClass = (fabric as any)?.fabric || fabric || (window as any).fabric;
     if (!FabricClass) return;
 
     if (canvasState.activeTool === 'PAN') {
@@ -210,19 +301,24 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
       fCanvas.discardActiveObject();
       fCanvas.requestRenderAll();
     } else if (canvasState.activeTool === 'ERASER') {
-      fCanvas.isDrawingMode = true;
+      fCanvas.isDrawingMode = false;
       fCanvas.selection = false;
-      fCanvas.freeDrawingBrush = new FabricClass.PencilBrush(fCanvas);
-      fCanvas.freeDrawingBrush.color = 'rgba(255,255,255,1)';
-      fCanvas.freeDrawingBrush.width = Math.max(canvasState.strokeWidth * 4, 24);
-      fCanvas.freeDrawingBrush.decimate = 2.0;
-      fCanvas.defaultCursor = 'cell';
+      const eraserCursor = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ef4444' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21'/%3E%3Cpath d='M22 21H7'/%3E%3Cpath d='m5 11 9 9'/%3E%3C/svg%3E") 4 20, crosshair`;
+      fCanvas.defaultCursor = eraserCursor;
+      fCanvas.hoverCursor = eraserCursor;
+      fCanvas.setCursor(eraserCursor);
+      fCanvas.getObjects().forEach((o: any) => {
+        o.selectable = false;
+        o.evented = true;
+      });
       fCanvas.discardActiveObject();
       fCanvas.requestRenderAll();
     } else if (canvasState.activeTool === 'SELECT') {
       fCanvas.isDrawingMode = false;
       fCanvas.selection = true;
       fCanvas.defaultCursor = 'default';
+      fCanvas.hoverCursor = 'move';
+      fCanvas.setCursor('default');
       fCanvas.getObjects().forEach((o: any) => { o.selectable = true; o.evented = true; });
       fCanvas.requestRenderAll();
     } else {
@@ -330,6 +426,23 @@ export const CanvasManager: React.FC<CanvasManagerProps> = ({ onCanvasReady }) =
     // Keyboard navigation & delete
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((document.activeElement as HTMLElement)?.tagName || '')) return;
+
+      // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y → Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          (window as any).__KIMIWISE_REDO__?.();
+        } else {
+          (window as any).__KIMIWISE_UNDO__?.();
+        }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        (window as any).__KIMIWISE_REDO__?.();
+        return;
+      }
+
       if (e.key === 'Delete' || e.key === 'Backspace') {
         const active = fCanvas.getActiveObjects();
         if (active && active.length > 0) {

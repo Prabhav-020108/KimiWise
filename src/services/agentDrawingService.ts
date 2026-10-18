@@ -6,6 +6,8 @@
 import { fabric } from 'fabric';
 import { useStore } from '../store';
 import { aiService, type BoardLessonData } from './aiService';
+import { collabService } from './collabService';
+import { toast } from '../utils/toast';
 
 const FabricClass = (fabric as any)?.fabric || fabric || (window as any).fabric;
 
@@ -465,21 +467,87 @@ class AgentDrawingService {
     // Give React 1 frame to ensure DOM canvas is rendered and measurable
     await new Promise((resolve) => setTimeout(resolve, 80));
 
-    // 1. Dynamic AI Generation: Attempt server Gemma 4 generation with fast timeout
+    // 1. Obtain Fabric canvas reference with polling early so dimensions and center are calibrated
+    let fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    if (!fCanvas) {
+      for (let attempt = 0; attempt < 15; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        fCanvas = (window as any).__KIMIWISE_CANVAS__;
+        if (fCanvas) break;
+      }
+    }
+
+    if (!fCanvas || !FabricClass) {
+      setAgentState({
+        isThinking: false,
+        isActing: false,
+        agentMessage: `Canvas ready: please click the board to view lesson.`,
+      });
+      return false;
+    }
+
+    // Ensure dimensions are properly calibrated
+    const containerW =
+      fCanvas.width && fCanvas.width > 200
+        ? fCanvas.width
+        : typeof window !== 'undefined'
+        ? window.innerWidth - 80
+        : 1200;
+    const containerH =
+      fCanvas.height && fCanvas.height > 200
+        ? fCanvas.height
+        : typeof window !== 'undefined'
+        ? window.innerHeight - 120
+        : 800;
+
+    if (!fCanvas.width || fCanvas.width <= 0) {
+      fCanvas.setWidth(containerW);
+      fCanvas.setHeight(containerH);
+      fCanvas.calcOffset();
+    }
+
+    const cx = Math.max(320, containerW / 2);
+    const cy = Math.max(260, containerH / 2);
+    const cleanPrompt = promptText.trim();
+    const shortPrompt = cleanPrompt.length > 34 ? cleanPrompt.slice(0, 32) + '...' : cleanPrompt;
+
+    // 2. Visible Multi-Stage Thinking Phase (Think first before drawing)
     let diagram: DiagramData | null = null;
 
     try {
+      // Thinking Stage 1: Decompose concept & invariant bounds
       setAgentState({
         isThinking: true,
-        isActing: true,
-        agentMessage: `Reasoning with Gemma AI: "${promptText.slice(0, 36)}..."`,
-        cursorPosition: { x: 500, y: 180 },
+        isActing: false,
+        agentMessage: `🧠 Decomposing concept: "${shortPrompt}"`,
+        cursorPosition: { x: cx - 180, y: cy - 90 },
       });
 
       const aiPromise = aiService.generateBoardLesson(promptText);
       const timeoutPromise = new Promise<{ lesson: BoardLessonData }>((_, reject) =>
-        setTimeout(() => reject(new Error('AI board lesson timeout')), 20000)
+        setTimeout(() => reject(new Error('AI board lesson timeout')), 25000)
       );
+
+      // Micro-pause for visible cognitive feedback
+      await new Promise((resolve) => setTimeout(resolve, 450));
+
+      // Thinking Stage 2: Flowchart sequencing & logic formulation
+      setAgentState({
+        isThinking: true,
+        isActing: false,
+        agentMessage: `📐 Formulating flowchart stages, decision logic & edge cases...`,
+        cursorPosition: { x: cx - 220, y: cy + 40 },
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 450));
+
+      // Thinking Stage 3: Pedagogical principles & real-world analogy
+      setAgentState({
+        isThinking: true,
+        isActing: false,
+        agentMessage: `💡 Synthesizing pedagogical principles & classroom analogy...`,
+        cursorPosition: { x: cx + 180, y: cy - 40 },
+      });
 
       const res = await Promise.race([aiPromise, timeoutPromise]);
       if (res?.lesson) {
@@ -505,78 +573,67 @@ class AgentDrawingService {
     }
 
     try {
-      // 2. Obtain Fabric canvas reference with polling
-      let fCanvas = (window as any).__KIMIWISE_CANVAS__;
-      if (!fCanvas) {
-        for (let attempt = 0; attempt < 15; attempt++) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          fCanvas = (window as any).__KIMIWISE_CANVAS__;
-          if (fCanvas) break;
+      // 3. Prevent destructive canvas wipe: check if slide already has notes or drawings
+      const existingObjs = fCanvas.getObjects();
+      const hasExistingContent = existingObjs.length > 0;
+      const cleanTitle = (diagram.title || 'AI Lesson').trim();
+      const slideTitle = cleanTitle.length > 25 ? cleanTitle.slice(0, 22) + '...' : cleanTitle;
+
+      if (hasExistingContent) {
+        // Automatically create a new slide so user/teacher notes are preserved
+        useStore.getState().addSlide(slideTitle);
+        const newIdx = useStore.getState().canvas.currentPageIndex;
+        collabService.sendSlideChange(newIdx);
+        toast.info(`Preserved notes on previous slide. Drawing "${slideTitle}" on new slide.`);
+      } else {
+        // Current slide is empty. Rename it to match the lesson title.
+        const store = useStore.getState();
+        const currentIdx = store.canvas.currentPageIndex;
+        const currentSlides = [...store.canvas.slides];
+        if (currentSlides[currentIdx]) {
+          currentSlides[currentIdx] = {
+            ...currentSlides[currentIdx],
+            name: slideTitle,
+          };
+          useStore.setState((s) => ({
+            canvas: { ...s.canvas, slides: currentSlides },
+          }));
         }
+        fCanvas.clear();
+        fCanvas.backgroundColor = 'transparent';
+        fCanvas.requestRenderAll();
+        (window as any).__KIMIWISE_SYNC_GRID__?.();
       }
 
-      if (!fCanvas || !FabricClass) {
-        setAgentState({
-          isThinking: false,
-          isActing: false,
-          agentMessage: `Canvas ready: please click the board to view lesson.`,
-        });
-        return false;
-      }
-
-      // Ensure dimensions are properly calibrated
-      const containerW =
-        fCanvas.width && fCanvas.width > 200
-          ? fCanvas.width
-          : typeof window !== 'undefined'
-          ? window.innerWidth - 80
-          : 1200;
-      const containerH =
-        fCanvas.height && fCanvas.height > 200
-          ? fCanvas.height
-          : typeof window !== 'undefined'
-          ? window.innerHeight - 120
-          : 800;
-
-      if (!fCanvas.width || fCanvas.width <= 0) {
-        fCanvas.setWidth(containerW);
-        fCanvas.setHeight(containerH);
-        fCanvas.calcOffset();
-      }
-
-      // 3. Clear existing objects on current slide to draw fresh lesson
-      fCanvas.clear();
-      fCanvas.backgroundColor = 'transparent';
-      fCanvas.requestRenderAll();
-      (window as any).__KIMIWISE_SYNC_GRID__?.();
-
-      const cx = Math.max(320, containerW / 2);
-      const cy = Math.max(260, containerH / 2);
+      const aiBatchId = 'ai_' + Date.now();
 
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      // 4. Animate Agent Drawing Step by Step
+      // 4. Smoothly Transition from Thinking to Drawing Step by Step
       setAgentState({
         isThinking: false,
         isActing: true,
-        agentMessage: `KimiWise Agent Illustrating: "${diagram.title}"`,
+        agentMessage: `📐 Illustrating Flowchart: "${diagram.title}"`,
       });
 
-      if (diagram.svg) {
-        await this.drawSvgIllustration(diagram, cx, cy, containerW, fCanvas, setAgentState);
+      if (diagram.type === 'flowchart') {
+        await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState, aiBatchId);
       } else if (diagram.type === 'mindmap') {
-        await this.drawMindmap(diagram, cx, cy, containerW, fCanvas, setAgentState);
+        await this.drawMindmap(diagram, cx, cy, containerW, fCanvas, setAgentState, aiBatchId);
+      } else if (diagram.svg) {
+        await this.drawSvgIllustration(diagram, cx, cy, containerW, fCanvas, setAgentState, aiBatchId);
       } else {
-        await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState);
+        await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState, aiBatchId);
       }
 
-      // 5. Save canvas state to store slide
+      // 5. Save canvas state to store slide & broadcast to peers
       const currentIdx = useStore.getState().canvas.currentPageIndex;
       const currentSlides = [...useStore.getState().canvas.slides];
+      const serializedCanvas = fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']);
       if (currentSlides[currentIdx]) {
         currentSlides[currentIdx] = {
           ...currentSlides[currentIdx],
-          canvasJson: fCanvas.toJSON(),
+          canvasJson: serializedCanvas,
         };
       }
       const canvasObjects = fCanvas.getObjects().map((obj: any) => ({
@@ -597,6 +654,7 @@ class AgentDrawingService {
         },
       }));
       fCanvas.renderAll();
+      collabService.sendCanvasUpdate(serializedCanvas);
 
       // 6. Drawing Complete!
       setAgentState({
@@ -619,6 +677,18 @@ class AgentDrawingService {
     }
   }
 
+  // ── Helper to tag every generated object with aiBatchId ────────────────────
+  private addToCanvasWithBatch(fCanvas: any, obj: any, aiBatchId?: string) {
+    if (!obj || !fCanvas) return;
+    if (aiBatchId) {
+      (obj as any).aiBatchId = aiBatchId;
+      if (typeof obj.set === 'function') {
+        obj.set('aiBatchId', aiBatchId);
+      }
+    }
+    fCanvas.add(obj);
+  }
+
   // ── Draw Flowchart / Roadmap (Left Side) + Lesson Card (Right Side) ─────────
   private async drawFlowchart(
     diagram: DiagramData,
@@ -626,19 +696,59 @@ class AgentDrawingService {
     cy: number,
     containerW: number,
     fCanvas: any,
-    setAgentState: (state: any) => void
+    setAgentState: (state: any) => void,
+    aiBatchId?: string
   ) {
     const nodes = diagram.nodes;
     const hasNotes = Boolean(diagram.lessonNotes);
 
-    // If notes exist and canvas has enough space, shift flowchart left and notes right
-    const isDualPane = hasNotes && containerW >= 850;
-    const flowX = isDualPane ? Math.max(200, cx - 250) : cx;
-    const notesX = isDualPane ? Math.min(containerW - 250, cx + 250) : cx;
+    // Calculate layout:
+    // If containerW >= 780, use side-by-side dual-pane (Flowchart Left, Blackboard Lesson Notes Right)
+    // If containerW < 780, use stacked layout (Flowchart Top, Blackboard Lesson Notes directly below)
+    const isDualPane = hasNotes && containerW >= 780;
+    const flowX = isDualPane ? Math.max(180, cx - 240) : cx;
+    const notesX = isDualPane ? Math.min(containerW - 240, cx + 240) : cx;
 
     const spacing = 110;
     const totalFlowH = nodes.length * spacing;
-    const startY = Math.max(75, cy - totalFlowH / 2 + 25);
+    const startY = Math.max(80, cy - totalFlowH / 2 + 10);
+
+    // ── Phase 0: Render Sleek Flowchart Title Badge ────────────────────────────
+    const titlePillW = Math.min(360, Math.max(240, (diagram.title.length * 10) + 40));
+    const titlePill = new FabricClass.Rect({
+      left: 0,
+      top: 0,
+      width: titlePillW,
+      height: 36,
+      rx: 18,
+      ry: 18,
+      fill: '#0f172a',
+      stroke: '#38bdf8',
+      strokeWidth: 1.5,
+      originX: 'center',
+      originY: 'center',
+      shadow: new FabricClass.Shadow({ color: 'rgba(15,23,42,0.2)', blur: 10, offsetY: 2 }),
+    });
+    const titleText = new FabricClass.Text(`⚡ ${diagram.title.toUpperCase()}`, {
+      left: 0,
+      top: 0,
+      fontSize: 11,
+      fill: '#ffffff',
+      fontFamily: 'Inter, sans-serif',
+      fontWeight: 'bold',
+      originX: 'center',
+      originY: 'center',
+    });
+    const headerGroup = new FabricClass.Group([titlePill, titleText], {
+      left: flowX,
+      top: startY - 46,
+      originX: 'center',
+      originY: 'center',
+      selectable: true,
+      id: 'flowchart_title',
+    });
+    this.addToCanvasWithBatch(fCanvas, headerGroup, aiBatchId);
+    fCanvas.requestRenderAll();
 
     // ── Phase 1: Draw Sequential Nodes on Left ────────────────────────────────
     for (let i = 0; i < nodes.length; i++) {
@@ -652,7 +762,7 @@ class AgentDrawingService {
         agentMessage: `Drawing Step ${i + 1}/${nodes.length}: ${node.label}`,
       });
 
-      await new Promise((r) => setTimeout(r, 220));
+      await new Promise((r) => setTimeout(r, 200));
 
       // B. Create Shape Object with exact child offsets
       let shapeGroup: any;
@@ -817,23 +927,25 @@ class AgentDrawingService {
       }
 
       shapeGroup.setCoords();
-      fCanvas.add(shapeGroup);
+      this.addToCanvasWithBatch(fCanvas, shapeGroup, aiBatchId);
       fCanvas.requestRenderAll();
 
       // C. Draw Connecting Arrow from previous node
       if (i > 0) {
-        const prevY = startY + (i - 1) * spacing + 27;
-        const curY = ny - 27;
+        const prevNode = nodes[i - 1];
+        const isPrevDecision = prevNode.type === 'decision';
+        const prevY = isPrevDecision ? (startY + (i - 1) * spacing + 40) : (startY + (i - 1) * spacing + 28);
+        const curY = ny - (node.type === 'decision' ? 40 : 28);
 
         setAgentState({
           cursorPosition: { x: nx, y: (prevY + curY) / 2 },
           agentMessage: `Connecting Step ${i} → Step ${i + 1}`,
         });
 
-        await new Promise((r) => setTimeout(r, 110));
+        await new Promise((r) => setTimeout(r, 100));
 
         const line = new FabricClass.Line([nx, prevY, nx, curY], {
-          stroke: '#3b82f6',
+          stroke: isPrevDecision ? '#f59e0b' : '#3b82f6',
           strokeWidth: 2.5,
           selectable: false,
           evented: false,
@@ -847,45 +959,99 @@ class AgentDrawingService {
           angle: 180,
           width: 12,
           height: 12,
-          fill: '#3b82f6',
+          fill: isPrevDecision ? '#f59e0b' : '#3b82f6',
           selectable: false,
           evented: false,
         });
 
-        fCanvas.add(line);
-        fCanvas.add(arrowHead);
+        this.addToCanvasWithBatch(fCanvas, line, aiBatchId);
+        this.addToCanvasWithBatch(fCanvas, arrowHead, aiBatchId);
+
+        // Add condition badge for decision branches
+        if (isPrevDecision) {
+          const branchBadgeBg = new FabricClass.Rect({
+            left: nx + 44,
+            top: (prevY + curY) / 2,
+            width: 66,
+            height: 20,
+            rx: 6,
+            ry: 6,
+            fill: '#fef3c7',
+            stroke: '#f59e0b',
+            strokeWidth: 1,
+            originX: 'center',
+            originY: 'center',
+          });
+          const branchBadgeTxt = new FabricClass.Text('Pass / Next', {
+            left: nx + 44,
+            top: (prevY + curY) / 2,
+            fontSize: 9,
+            fill: '#b45309',
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 'bold',
+            originX: 'center',
+            originY: 'center',
+          });
+          const branchGroup = new FabricClass.Group([branchBadgeBg, branchBadgeTxt], {
+            selectable: false,
+            evented: false,
+          });
+          this.addToCanvasWithBatch(fCanvas, branchGroup, aiBatchId);
+        }
+
         fCanvas.requestRenderAll();
       }
 
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 110));
     }
 
-    // ── Phase 2: Draw Blackboard Lesson Note Card on Right ─────────────────────
-    if (diagram.lessonNotes && isDualPane) {
+    // ── Phase 2: Draw Blackboard Lesson Note Card (Always guaranteed!) ────────
+    if (diagram.lessonNotes) {
+      const cardY = isDualPane ? Math.max(45, startY - 45) : startY + totalFlowH + 45;
+      const cardX = isDualPane ? notesX : cx;
       await this.drawLessonNotesCard(
         diagram.lessonNotes,
-        notesX,
-        startY,
+        cardX,
+        cardY,
         totalFlowH,
         fCanvas,
-        setAgentState
+        setAgentState,
+        aiBatchId
       );
     }
   }
 
-  // ── Draw Blackboard Lesson Note Card with Rich Text Sections ────────────────
+  // ── Draw Blackboard Lesson Note Card with Dynamic Stacking & Auto-Height ────
   private async drawLessonNotesCard(
     notes: LessonNotes,
     notesX: number,
     startY: number,
     totalFlowH: number,
     fCanvas: any,
-    setAgentState: (state: any) => void
+    setAgentState: (state: any) => void,
+    aiBatchId?: string
   ) {
     const cardW = 440;
-    const cardH = Math.max(470, totalFlowH + 40);
     const cardLeft = notesX - cardW / 2;
-    const cardTop = Math.max(50, startY - 25);
+    const cardTop = Math.max(45, startY);
+
+    // Compute dynamic heights for each section to prevent any text clipping or overlap
+    const overviewLines = wrapText(notes.overview, 52).split('\n').length;
+    const overviewH = overviewLines * 16;
+
+    const bulletLines = (notes.keyPrinciples || []).map((p) => `• ${p}`).join('\n');
+    const principleLines = wrapText(bulletLines, 50).split('\n').length;
+    const principlesH = principleLines * 15;
+
+    const analogyLines = wrapText(notes.realWorldAnalogy, 48).split('\n').length;
+    const analogyBoxH = Math.max(70, analogyLines * 15 + 36);
+
+    const takeawayLines = wrapText(notes.takeaway, 48).split('\n').length;
+    const takeawayBoxH = Math.max(56, takeawayLines * 15 + 32);
+
+    // Total content height calculated dynamically
+    const calculatedH = 55 + (overviewH + 34) + (principlesH + 34) + (analogyBoxH + 14) + (takeawayBoxH + 20);
+    const cardH = Math.max(totalFlowH + 30, calculatedH);
 
     // 1. Move Agent Cursor to Card Header
     setAgentState({
@@ -893,7 +1059,7 @@ class AgentDrawingService {
       agentMessage: `Writing Blackboard Lesson Notes: "${notes.title}"`,
     });
 
-    await new Promise((r) => setTimeout(r, 260));
+    await new Promise((r) => setTimeout(r, 220));
 
     // Outer Card Container (Clean whiteboard card with subtle slate border)
     const cardBg = new FabricClass.Rect({
@@ -913,7 +1079,7 @@ class AgentDrawingService {
       }),
       selectable: true,
     });
-    fCanvas.add(cardBg);
+    this.addToCanvasWithBatch(fCanvas, cardBg, aiBatchId);
 
     // Card Header Banner (Dark Indigo)
     const headerBg = new FabricClass.Rect({
@@ -926,7 +1092,7 @@ class AgentDrawingService {
       fill: '#0f172a',
       selectable: false,
     });
-    fCanvas.add(headerBg);
+    this.addToCanvasWithBatch(fCanvas, headerBg, aiBatchId);
 
     const headerTag = new FabricClass.Text('📚 BLACKBOARD LESSON NOTES & CONCEPTS', {
       left: cardLeft + 20,
@@ -937,7 +1103,7 @@ class AgentDrawingService {
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(headerTag);
+    this.addToCanvasWithBatch(fCanvas, headerTag, aiBatchId);
 
     const headerTitle = new FabricClass.Text(notes.title || 'Lesson Overview', {
       left: cardLeft + 20,
@@ -948,85 +1114,88 @@ class AgentDrawingService {
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(headerTitle);
+    this.addToCanvasWithBatch(fCanvas, headerTitle, aiBatchId);
 
     fCanvas.requestRenderAll();
-    await new Promise((r) => setTimeout(r, 180));
+    await new Promise((r) => setTimeout(r, 160));
+
+    let curY = cardTop + 58;
 
     // 2. Overview Section
     setAgentState({
-      cursorPosition: { x: notesX, y: cardTop + 90 },
+      cursorPosition: { x: notesX, y: curY + 20 },
       agentMessage: 'Writing Conceptual Overview...',
     });
 
     const overviewLabel = new FabricClass.Text('📖 Conceptual Overview & Mechanism', {
       left: cardLeft + 20,
-      top: cardTop + 62,
+      top: curY,
       fontSize: 11,
       fill: '#475569',
       fontFamily: 'Inter, sans-serif',
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(overviewLabel);
+    this.addToCanvasWithBatch(fCanvas, overviewLabel, aiBatchId);
 
     const overviewBody = new FabricClass.Text(wrapText(notes.overview, 52), {
       left: cardLeft + 20,
-      top: cardTop + 80,
+      top: curY + 18,
       fontSize: 10.5,
       fill: '#1e293b',
       fontFamily: 'Inter, sans-serif',
       lineHeight: 1.35,
       selectable: true,
     });
-    fCanvas.add(overviewBody);
+    this.addToCanvasWithBatch(fCanvas, overviewBody, aiBatchId);
 
+    curY += overviewH + 30;
     fCanvas.requestRenderAll();
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 160));
 
     // 3. Core Principles Section
     setAgentState({
-      cursorPosition: { x: notesX, y: cardTop + 175 },
+      cursorPosition: { x: notesX, y: curY + 20 },
       agentMessage: 'Detailing Core Pedagogical Principles...',
     });
 
     const principlesLabel = new FabricClass.Text('⚡ Key Principles & Theoretical Invariants', {
       left: cardLeft + 20,
-      top: cardTop + 155,
+      top: curY,
       fontSize: 11,
       fill: '#475569',
       fontFamily: 'Inter, sans-serif',
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(principlesLabel);
+    this.addToCanvasWithBatch(fCanvas, principlesLabel, aiBatchId);
 
-    const bulletLines = (notes.keyPrinciples || []).map((p) => `• ${p}`).join('\n');
     const principlesBody = new FabricClass.Text(wrapText(bulletLines, 50), {
       left: cardLeft + 20,
-      top: cardTop + 175,
+      top: curY + 18,
       fontSize: 10,
       fill: '#334155',
       fontFamily: 'Inter, sans-serif',
       lineHeight: 1.35,
       selectable: true,
     });
-    fCanvas.add(principlesBody);
+    this.addToCanvasWithBatch(fCanvas, principlesBody, aiBatchId);
 
+    curY += principlesH + 30;
     fCanvas.requestRenderAll();
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 160));
 
     // 4. Real-World Analogy Callout Box
     setAgentState({
-      cursorPosition: { x: notesX, y: cardTop + 295 },
+      cursorPosition: { x: notesX, y: curY + 30 },
       agentMessage: 'Writing Intuitive Classroom Analogy...',
     });
 
     const analogyBox = new FabricClass.Rect({
       left: cardLeft + 16,
-      top: cardTop + 270,
+      top: curY,
       width: cardW - 32,
-      height: 90,
+      height: analogyBoxH,
       rx: 10,
       ry: 10,
       fill: '#fffbeb',
@@ -1034,44 +1203,45 @@ class AgentDrawingService {
       strokeWidth: 1.5,
       selectable: true,
     });
-    fCanvas.add(analogyBox);
+    this.addToCanvasWithBatch(fCanvas, analogyBox, aiBatchId);
 
     const analogyLabel = new FabricClass.Text('💡 Intuitive Classroom Analogy', {
       left: cardLeft + 28,
-      top: cardTop + 280,
+      top: curY + 10,
       fontSize: 10.5,
       fill: '#b45309',
       fontFamily: 'Inter, sans-serif',
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(analogyLabel);
+    this.addToCanvasWithBatch(fCanvas, analogyLabel, aiBatchId);
 
     const analogyText = new FabricClass.Text(wrapText(notes.realWorldAnalogy, 48), {
       left: cardLeft + 28,
-      top: cardTop + 300,
+      top: curY + 28,
       fontSize: 10,
       fill: '#78350f',
       fontFamily: 'Inter, sans-serif',
       lineHeight: 1.3,
       selectable: true,
     });
-    fCanvas.add(analogyText);
+    this.addToCanvasWithBatch(fCanvas, analogyText, aiBatchId);
 
+    curY += analogyBoxH + 14;
     fCanvas.requestRenderAll();
-    await new Promise((r) => setTimeout(r, 180));
+    await new Promise((r) => setTimeout(r, 160));
 
     // 5. Key Takeaway Callout Box
     setAgentState({
-      cursorPosition: { x: notesX, y: cardTop + 395 },
+      cursorPosition: { x: notesX, y: curY + 25 },
       agentMessage: 'Highlighting Exam & Practical Takeaway...',
     });
 
     const takeawayBox = new FabricClass.Rect({
       left: cardLeft + 16,
-      top: cardTop + 372,
+      top: curY,
       width: cardW - 32,
-      height: 58,
+      height: takeawayBoxH,
       rx: 10,
       ry: 10,
       fill: '#ecfdf5',
@@ -1079,29 +1249,29 @@ class AgentDrawingService {
       strokeWidth: 1.5,
       selectable: true,
     });
-    fCanvas.add(takeawayBox);
+    this.addToCanvasWithBatch(fCanvas, takeawayBox, aiBatchId);
 
     const takeawayLabel = new FabricClass.Text('🎯 Core Exam & Engineering Takeaway', {
       left: cardLeft + 28,
-      top: cardTop + 382,
+      top: curY + 10,
       fontSize: 10.5,
       fill: '#047857',
       fontFamily: 'Inter, sans-serif',
       fontWeight: 'bold',
       selectable: false,
     });
-    fCanvas.add(takeawayLabel);
+    this.addToCanvasWithBatch(fCanvas, takeawayLabel, aiBatchId);
 
     const takeawayText = new FabricClass.Text(wrapText(notes.takeaway, 48), {
       left: cardLeft + 28,
-      top: cardTop + 400,
+      top: curY + 28,
       fontSize: 10,
       fill: '#065f46',
       fontFamily: 'Inter, sans-serif',
       fontWeight: 'bold',
       selectable: true,
     });
-    fCanvas.add(takeawayText);
+    this.addToCanvasWithBatch(fCanvas, takeawayText, aiBatchId);
 
     fCanvas.requestRenderAll();
   }
@@ -1113,7 +1283,8 @@ class AgentDrawingService {
     cy: number,
     containerW: number,
     fCanvas: any,
-    setAgentState: (state: any) => void
+    setAgentState: (state: any) => void,
+    aiBatchId?: string
   ) {
     const centerNode = diagram.nodes[0];
     const branches = diagram.nodes.slice(1);
@@ -1163,7 +1334,7 @@ class AgentDrawingService {
       selectable: true,
     });
     centerGroup.setCoords();
-    fCanvas.add(centerGroup);
+    this.addToCanvasWithBatch(fCanvas, centerGroup, aiBatchId);
     fCanvas.requestRenderAll();
 
     // 2. Draw Radial Branches
@@ -1187,7 +1358,7 @@ class AgentDrawingService {
         selectable: false,
         evented: false,
       });
-      fCanvas.add(branchLine);
+      this.addToCanvasWithBatch(fCanvas, branchLine, aiBatchId);
 
       // Branch node box
       const bRect = new FabricClass.Rect({
@@ -1238,7 +1409,7 @@ class AgentDrawingService {
         selectable: true,
       });
       branchGroup.setCoords();
-      fCanvas.add(branchGroup);
+      this.addToCanvasWithBatch(fCanvas, branchGroup, aiBatchId);
       fCanvas.requestRenderAll();
     }
 
@@ -1251,7 +1422,8 @@ class AgentDrawingService {
         cy - 200,
         450,
         fCanvas,
-        setAgentState
+        setAgentState,
+        aiBatchId
       );
     }
   }
@@ -1263,7 +1435,8 @@ class AgentDrawingService {
     cy: number,
     containerW: number,
     fCanvas: any,
-    setAgentState: (state: any) => void
+    setAgentState: (state: any) => void,
+    aiBatchId?: string
   ): Promise<boolean> {
     if (!diagram.svg) return false;
     const hasNotes = Boolean(diagram.lessonNotes);
@@ -1281,7 +1454,7 @@ class AgentDrawingService {
       try {
         FabricClass.loadSVGFromString(diagram.svg, async (objects: any[], options: any) => {
           if (!objects || objects.length === 0) {
-            await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState);
+            await this.drawFlowchart(diagram, cx, cy, containerW, fCanvas, setAgentState, aiBatchId);
             resolve(false);
             return;
           }
@@ -1301,7 +1474,7 @@ class AgentDrawingService {
             selectable: true,
           });
           svgGroup.setCoords();
-          fCanvas.add(svgGroup);
+          this.addToCanvasWithBatch(fCanvas, svgGroup, aiBatchId);
           fCanvas.setActiveObject(svgGroup);
           fCanvas.requestRenderAll();
 
@@ -1314,7 +1487,8 @@ class AgentDrawingService {
               Math.max(60, cy - 220),
               440,
               fCanvas,
-              setAgentState
+              setAgentState,
+              aiBatchId
             );
           }
           resolve(true);

@@ -1,11 +1,12 @@
 import React from 'react';
-import { Terminal, Trash2, CheckCircle, AlertTriangle, Clock, Play } from 'lucide-react';
+import { Terminal, Trash2, CheckCircle, AlertTriangle, Clock, Play, Copy, Check } from 'lucide-react';
 
 interface CodeOutputProps {
   output: string;
   error?: string | null;
   executionTimeMs?: number | null;
   isRunning?: boolean;
+  engine?: string | null;
   onClear: () => void;
   onRun?: () => void;
 }
@@ -15,26 +16,44 @@ export const CodeOutput: React.FC<CodeOutputProps> = ({
   error,
   executionTimeMs,
   isRunning,
+  engine,
   onClear,
   onRun,
 }) => {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    const textToCopy = error ? `${error}\n${output}` : output;
+    if (!textToCopy) return;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-inner">
       {/* Console Header Bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800 shrink-0 select-none">
         <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
           <Terminal size={14} className="text-emerald-400" />
-          <span className="font-semibold">Terminal Output</span>
+          <span className="font-semibold">Terminal</span>
+
+          {engine && (
+            <span className="text-[10px] text-slate-400 font-sans bg-slate-800 border border-slate-700/60 px-2 py-0.5 rounded-md hidden sm:inline-block">
+              {engine}
+            </span>
+          )}
 
           {isRunning && (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400 font-sans ml-2 font-medium">
+            <span className="flex items-center gap-1 text-[10px] text-amber-400 font-sans ml-1 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
               Running...
             </span>
           )}
 
           {!isRunning && executionTimeMs != null && (
-            <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono ml-2">
+            <span className="flex items-center gap-1 text-[10px] text-slate-500 font-mono ml-1">
               <Clock size={10} />
               {executionTimeMs}ms
             </span>
@@ -65,13 +84,22 @@ export const CodeOutput: React.FC<CodeOutputProps> = ({
           )}
 
           {(output || error) && (
-            <button
-              onClick={onClear}
-              title="Clear console"
-              className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-            >
-              <Trash2 size={13} />
-            </button>
+            <>
+              <button
+                onClick={handleCopy}
+                title="Copy console output"
+                className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+              </button>
+              <button
+                onClick={onClear}
+                title="Clear console"
+                className="p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
           )}
         </div>
       </div>

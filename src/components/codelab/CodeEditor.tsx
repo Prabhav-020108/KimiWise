@@ -6,6 +6,7 @@ interface CodeEditorProps {
   language: string;
   onChange: (value: string) => void;
   onClear?: () => void;
+  onRun?: () => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -13,6 +14,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   language,
   onChange,
   onClear,
+  onRun,
 }) => {
   const [copied, setCopied] = React.useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -29,6 +31,13 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
+
+    // Handle Ctrl+Enter / Cmd+Enter to Run
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      onRun?.();
+      return;
+    }
 
     // Handle Tab key (indent with 2 spaces)
     if (e.key === 'Tab') {

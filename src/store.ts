@@ -15,6 +15,7 @@ import type {
   StudentProgress,
   TeacherInsight,
   VoiceConfig,
+  CollabUser,
 } from './types';
 
 // ── AI Status ────────────────────────────────────────────────────────────────
@@ -61,11 +62,22 @@ interface SessionState {
 
 // ── Collaboration ────────────────────────────────────────────────────────────
 
+export interface RemoteCursor {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+  lastSeen: number;
+}
+
 interface CollabState {
   roomId: string | null;
   isHost: boolean;
   connectedPeers: number;
   isCollabActive: boolean;
+  peers: CollabUser[];
+  myUser: CollabUser;
+  remoteCursors: Record<string, RemoteCursor>;
 }
 
 // ── Voice ────────────────────────────────────────────────────────────────────
@@ -166,13 +178,21 @@ interface KimiWiseStore {
   setZoom: (zoom: number) => void;
   setCanvasObjects: (objects: CanvasObjectData[]) => void;
   setDomElements: (elements: Record<string, DomElementState>) => void;
-  addSlide: () => void;
+  addSlide: (customName?: string) => void;
   setSlide: (index: number) => void;
   deleteSlide: (index: number) => void;
 
   // Session Actions
   setCurrentSession: (session: BoardSession | null) => void;
   addRecentSession: (session: BoardSession) => void;
+
+  // Collaboration Actions
+  setCollabState: (state: Partial<CollabState>) => void;
+  setRoomId: (roomId: string) => void;
+  setConnectedPeers: (peers: number) => void;
+  setRemoteCursor: (socketId: string, cursor: { x: number; y: number }, user: CollabUser) => void;
+  removeRemoteCursor: (socketId: string) => void;
+  clearRemoteCursors: () => void;
 
   // Voice Actions
   setRecording: (isRecording: boolean) => void;
@@ -269,10 +289,18 @@ export const useStore = create<KimiWiseStore>()((set) => ({
   },
 
   collab: {
-    roomId: null,
-    isHost: false,
-    connectedPeers: 0,
+    roomId: 'CLASS-101',
+    isHost: true,
+    connectedPeers: 1,
     isCollabActive: false,
+    peers: [],
+    myUser: {
+      id: 'local_' + Math.random().toString(36).substring(2, 7),
+      name: 'Teacher (Host)',
+      color: '#2563eb',
+      isHost: true,
+    },
+    remoteCursors: {},
   },
 
   voice: {
@@ -365,20 +393,20 @@ export const useStore = create<KimiWiseStore>()((set) => ({
   setDomElements: (elements) =>
     set((s) => ({ canvas: { ...s.canvas, domElements: elements } })),
 
-  addSlide: () => {
-    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+  addSlide: (customName?: string) => {
+    const fCanvas = typeof window !== 'undefined' ? (window as any).__KIMIWISE_CANVAS__ : null;
     set((s) => {
       const currentIdx = s.canvas.currentPageIndex;
       const currentSlides = [...s.canvas.slides];
       if (fCanvas) {
         currentSlides[currentIdx] = {
           ...currentSlides[currentIdx],
-          canvasJson: fCanvas.toJSON(),
+          canvasJson: fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']),
         };
       }
       const newSlide: SlideData = {
         id: `slide_${Date.now()}`,
-        name: `Slide ${currentSlides.length + 1}`,
+        name: customName || `Slide ${currentSlides.length + 1}`,
         canvasJson: { objects: [], background: '#ffffff' },
       };
       currentSlides.push(newSlide);
@@ -387,6 +415,7 @@ export const useStore = create<KimiWiseStore>()((set) => ({
         fCanvas.clear();
         fCanvas.backgroundColor = '#ffffff';
         fCanvas.requestRenderAll();
+        (window as any).__KIMIWISE_SYNC_GRID__?.();
       }
       return {
         canvas: {
@@ -401,7 +430,7 @@ export const useStore = create<KimiWiseStore>()((set) => ({
   },
 
   setSlide: (index: number) => {
-    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    const fCanvas = typeof window !== 'undefined' ? (window as any).__KIMIWISE_CANVAS__ : null;
     set((s) => {
       if (index < 0 || index >= s.canvas.slides.length || index === s.canvas.currentPageIndex) return s;
       const currentIdx = s.canvas.currentPageIndex;
@@ -409,7 +438,7 @@ export const useStore = create<KimiWiseStore>()((set) => ({
       if (fCanvas) {
         currentSlides[currentIdx] = {
           ...currentSlides[currentIdx],
-          canvasJson: fCanvas.toJSON(),
+          canvasJson: fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']),
         };
       }
       const targetSlide = currentSlides[index];
@@ -418,11 +447,13 @@ export const useStore = create<KimiWiseStore>()((set) => ({
           fCanvas.loadFromJSON(targetSlide.canvasJson, () => {
             fCanvas.backgroundColor = '#ffffff';
             fCanvas.requestRenderAll();
+            (window as any).__KIMIWISE_SYNC_GRID__?.();
           });
         } else {
           fCanvas.clear();
           fCanvas.backgroundColor = '#ffffff';
           fCanvas.requestRenderAll();
+          (window as any).__KIMIWISE_SYNC_GRID__?.();
         }
       }
       return {
@@ -437,7 +468,7 @@ export const useStore = create<KimiWiseStore>()((set) => ({
   },
 
   deleteSlide: (index: number) => {
-    const fCanvas = (window as any).__KIMIWISE_CANVAS__;
+    const fCanvas = typeof window !== 'undefined' ? (window as any).__KIMIWISE_CANVAS__ : null;
     set((s) => {
       if (s.canvas.slides.length <= 1) return s;
       const currentSlides = s.canvas.slides.filter((_, i) => i !== index);
@@ -478,6 +509,44 @@ export const useStore = create<KimiWiseStore>()((set) => ({
         recentSessions: [session, ...s.session.recentSessions.filter((r) => r.id !== session.id)].slice(0, 10),
       },
     })),
+
+  // ── Collaboration Actions ──────────────────────────────────────────────────
+
+  setCollabState: (collabUpdate) =>
+    set((s) => ({ collab: { ...s.collab, ...collabUpdate } })),
+
+  setRoomId: (roomId) =>
+    set((s) => ({ collab: { ...s.collab, roomId } })),
+
+  setConnectedPeers: (connectedPeers) =>
+    set((s) => ({ collab: { ...s.collab, connectedPeers } })),
+
+  setRemoteCursor: (socketId, cursor, user) =>
+    set((s) => ({
+      collab: {
+        ...s.collab,
+        remoteCursors: {
+          ...s.collab.remoteCursors,
+          [socketId]: {
+            x: cursor.x,
+            y: cursor.y,
+            name: user.name,
+            color: user.color,
+            lastSeen: Date.now(),
+          },
+        },
+      },
+    })),
+
+  removeRemoteCursor: (socketId) =>
+    set((s) => {
+      const rest = { ...s.collab.remoteCursors };
+      delete rest[socketId];
+      return { collab: { ...s.collab, remoteCursors: rest } };
+    }),
+
+  clearRemoteCursors: () =>
+    set((s) => ({ collab: { ...s.collab, remoteCursors: {} } })),
 
   // ── Voice Actions ──────────────────────────────────────────────────────────
 

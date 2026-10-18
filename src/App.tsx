@@ -12,10 +12,23 @@ import { SettingsView } from './components/layout/SettingsView';
 import { FloatingTimer } from './components/classroom/FloatingTimer';
 import { FloatingCalc } from './components/classroom/FloatingCalc';
 import { DiagramModal } from './components/classroom/DiagramModal';
+import { ToastContainer } from './components/shared/ToastContainer';
 import { aiService } from './services/aiService';
+import { collabService } from './services/collabService';
 
 export function App() {
   const { ui, setAiStatus } = useStore();
+
+  // Initialize Socket.IO Real-Time Collaboration
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomFromUrl = params.get('room') || params.get('roomId') || 'CLASS-101';
+    collabService.init(roomFromUrl);
+
+    return () => {
+      collabService.destroy();
+    };
+  }, []);
 
   // Probe AI status on mount
   useEffect(() => {
@@ -78,10 +91,11 @@ export function App() {
             {ui.activeView === 'chat' && <ChatView />}
             {ui.activeView === 'settings' && <SettingsView />}
 
-            {/* Floating Classroom Tools */}
+            {/* Floating Classroom Tools & Feedback */}
             <FloatingTimer />
             <FloatingCalc />
             <DiagramModal />
+            <ToastContainer />
           </main>
         </div>
       </div>

@@ -13,6 +13,7 @@ import { OCRUpload } from './OCRUpload';
 import { CodeTutor } from './CodeTutor';
 import { CodeOutput } from './CodeOutput';
 import type { OcrResponse } from '../../services/aiService';
+import { codeSandboxService } from '../../services/codeSandboxService';
 
 const LANGUAGES = [
   { value: 'javascript', label: 'JavaScript' },
@@ -36,10 +37,11 @@ export const CodeLabView: React.FC = () => {
   const [showOcr, setShowOcr] = useState(false);
   const [executionError, setExecutionError] = useState<string | null>(null);
   const [executionTime, setExecutionTime] = useState<number | null>(null);
+  const [activeEngine, setActiveEngine] = useState<string | null>(null);
   const [rightPaneTab, setRightPaneTab] = useState<'tutor' | 'output' | 'split'>('split');
 
-  // ── Safe Sandboxed Execution ────────────────────────────────────────────────
-  const handleRunCode = useCallback(() => {
+  // ── Sandboxed Execution (Host Python 3.12 / Web Worker JS Sandbox) ───────────
+  const handleRunCode = useCallback(async () => {
     const rawCode = codeLab.code?.trim() || '';
     if (!rawCode) return;
 
@@ -47,78 +49,24 @@ export const CodeLabView: React.FC = () => {
     setExecutionError(null);
     setOutput('');
 
-    const startTime = performance.now();
-
     try {
-      if (codeLab.language === 'python') {
-        // Python execution simulation / simple parser
-        let stdout = '';
-        const printRegex = /print\s*\((.*?)\)/g;
-        let match;
-        while ((match = printRegex.exec(rawCode)) !== null) {
-          try {
-            // Evaluate simple expressions safely without eval
-            // eslint-disable-next-line no-new-func
-            const evaluated = new Function(`"use strict"; return (${match[1]});`)();
-            stdout += `${evaluated}\n`;
-          } catch {
-            stdout += `${match[1].replace(/['"]/g, '')}\n`;
-          }
-        }
+      const result = await codeSandboxService.execute(rawCode, codeLab.language || 'javascript');
+      setActiveEngine(result.engine);
+      setExecutionTime(result.executionTimeMs);
 
-        const elapsed = Math.round(performance.now() - startTime);
-        setExecutionTime(elapsed);
-
-        if (stdout.trim()) {
-          setOutput(stdout.trim());
-        } else {
-          setOutput(
-            `>>> Python 3.11 Execution (Simulated)\n[Running ${rawCode.split('\n').length} lines]\n✓ Syntax check passed without errors.`
-          );
-        }
+      if (result.error || result.exitCode !== 0) {
+        setExecutionError(result.error || result.stderr || 'Execution failed');
+        const formattedOutput = result.stderr
+          ? `${result.stdout ? result.stdout + '\n' : ''}${result.stderr}`
+          : (result.stdout || 'Execution failed');
+        setOutput(formattedOutput);
       } else {
-        // JavaScript / TypeScript execution
-        let logs: string[] = [];
-        const originalLog = console.log;
-        const originalWarn = console.warn;
-        const originalError = console.error;
-
-        console.log = (...args: any[]) => {
-          logs.push(args.map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' '));
-        };
-        console.warn = (...args: any[]) => {
-          logs.push('[WARN] ' + args.map(String).join(' '));
-        };
-        console.error = (...args: any[]) => {
-          logs.push('[ERROR] ' + args.map(String).join(' '));
-        };
-
-        try {
-          // eslint-disable-next-line no-new-func
-          const executeFn = new Function(rawCode);
-          const result = executeFn();
-
-          if (result !== undefined) {
-            logs.push(`=> Return: ${typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)}`);
-          }
-
-          const elapsed = Math.round(performance.now() - startTime);
-          setExecutionTime(elapsed);
-
-          const finalOutput = logs.length > 0 ? logs.join('\n') : '✓ Code ran successfully with no console output.';
-          setOutput(finalOutput);
-        } catch (runtimeErr: any) {
-          const errMsg = runtimeErr?.message || String(runtimeErr);
-          setExecutionError(errMsg);
-          setOutput(`Runtime Error: ${errMsg}`);
-        } finally {
-          console.log = originalLog;
-          console.warn = originalWarn;
-          console.error = originalError;
-        }
+        setOutput(result.stdout);
       }
     } catch (err: any) {
-      setExecutionError(err?.message || 'Execution failed');
+      const errMsg = err?.message || 'Execution failed';
+      setExecutionError(errMsg);
+      setOutput(`Runtime Error: ${errMsg}`);
     } finally {
       setIsRunning(false);
     }
@@ -255,6 +203,7 @@ export const CodeLabView: React.FC = () => {
             language={codeLab.language || 'javascript'}
             onChange={setCode}
             onClear={() => setCode('')}
+            onRun={handleRunCode}
           />
         </div>
 
@@ -281,6 +230,7 @@ export const CodeLabView: React.FC = () => {
                   error={executionError}
                   executionTimeMs={executionTime}
                   isRunning={codeLab.isRunning}
+                  engine={activeEngine}
                   onClear={() => {
                     setOutput('');
                     setExecutionError(null);
@@ -307,6 +257,7 @@ export const CodeLabView: React.FC = () => {
                 error={executionError}
                 executionTimeMs={executionTime}
                 isRunning={codeLab.isRunning}
+                engine={activeEngine}
                 onClear={() => {
                   setOutput('');
                   setExecutionError(null);

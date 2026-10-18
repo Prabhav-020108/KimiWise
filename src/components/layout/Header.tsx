@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard,
   Code2,
@@ -9,15 +9,18 @@ import {
   Menu,
   X,
   Share2,
-  Save,
   Sparkles,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import { useStore } from '../../store';
+import { ShareDialog } from './ShareDialog';
+import { SaveMenu } from './SaveMenu';
 
 export const Header: React.FC = () => {
-  const { ui, ai, setActiveView, toggleTheme, setSidebarOpen } = useStore();
+  const { ui, ai, collab, setActiveView, toggleTheme, setSidebarOpen } = useStore();
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const roomId = collab.roomId || 'CLASS-101';
 
   const navItems = [
     { id: 'board' as const, label: 'Smart Board', icon: LayoutDashboard },
@@ -120,23 +123,36 @@ export const Header: React.FC = () => {
           <span>KimiWise AI</span>
         </button>
 
-        {/* Share Button */}
+        {/* Live Multiplayer & Share Button */}
         <button
-          className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-slate-200/90 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-all active:scale-95 shadow-xs"
-          title="Share classroom"
+          onClick={() => setIsShareOpen(true)}
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-xs font-semibold transition-all active:scale-95 shadow-xs cursor-pointer select-none ${
+            collab.connectedPeers > 1
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+              : 'border-slate-200/90 text-slate-700 hover:bg-slate-50'
+          }`}
+          title={`Room ${roomId} • ${collab.connectedPeers} active user${collab.connectedPeers === 1 ? '' : 's'}`}
         >
-          <Share2 size={13} className="text-slate-500" />
-          <span>Share</span>
+          {collab.connectedPeers > 1 ? (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          ) : (
+            <Share2 size={13} className="text-slate-500" />
+          )}
+          <span>{collab.connectedPeers > 1 ? `${collab.connectedPeers} Live` : 'Share'}</span>
         </button>
 
-        {/* Save Button */}
-        <button
-          className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-slate-200/90 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-all active:scale-95 shadow-xs"
-          title="Save whiteboard"
-        >
-          <Save size={13} className="text-slate-500" />
-          <span>Save ⌄</span>
-        </button>
+        {/* Save Dropdown Menu */}
+        <SaveMenu />
+
+        {/* Share Dialog Modal */}
+        <ShareDialog
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          roomId={roomId}
+        />
 
         {/* AI Status Indicator */}
         <div

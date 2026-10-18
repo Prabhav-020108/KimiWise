@@ -15,6 +15,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import os from 'os';
 import { aiRouter } from './aiRouter';
+import { codeLabRouter } from './codeLabRouter';
 import { CONFIG } from '../constants';
 import type {
   ClientToServerEvents,
@@ -25,6 +26,7 @@ import type {
   CanvasJson,
   DomElementState,
   ViewportTransform,
+  CollabUser,
 } from '../types';
 
 // ── Room persistence ──────────────────────────────────────────────────────────
@@ -94,20 +96,39 @@ async function startServer(): Promise<void> {
 
   // ── Socket.IO — Real-time board collaboration ─────────────────────────────
 
+  const roomPeers = new Map<string, Map<string, CollabUser>>();
+
   io.on('connection', (socket) => {
     console.log(`[socket] Connected: ${socket.id}`);
 
-    socket.on('join-room', (roomId: string) => {
+    socket.on('join-room', (roomId: string, user?: CollabUser) => {
       if (typeof roomId !== 'string' || !roomId.trim() || roomId.length > 128) return;
       socket.join(roomId);
+      socket.data.roomId = roomId;
+
+      if (!roomPeers.has(roomId)) {
+        roomPeers.set(roomId, new Map());
+      }
+      const peersMap = roomPeers.get(roomId)!;
+
+      const palette = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+      const collabUser: CollabUser = user || {
+        id: socket.id,
+        name: peersMap.size === 0 ? 'Teacher (Host)' : `Student ${peersMap.size + 1}`,
+        color: palette[peersMap.size % palette.length],
+        isHost: peersMap.size === 0,
+      };
+
+      socket.data.user = collabUser;
+      peersMap.set(socket.id, collabUser);
 
       if (!rooms.has(roomId)) {
-        rooms.set(roomId, { state: [], viewports: {}, domElements: {}, lastViewport: null });
+        rooms.set(roomId, { state: [], viewports: {}, domElements: {}, lastViewport: null, currentSlideIndex: 0 });
         saveRooms(rooms);
       }
 
       const room = rooms.get(roomId)!;
-      socket.emit('canvas-init', room.state as CanvasJson);
+      socket.emit('canvas-init', room.state as CanvasJson, room.currentSlideIndex || 0);
       if (room.lastViewport) {
         socket.emit('viewport-update', { socketId: 'host', viewport: room.lastViewport });
       }
@@ -115,14 +136,59 @@ async function startServer(): Promise<void> {
         socket.emit('dom-elements-init', room.domElements);
       }
 
-      console.log(`[socket] ${socket.id} joined room: ${roomId}`);
+      // Broadcast room info with active peers to all room members
+      io.to(roomId).emit('room-info', {
+        roomId,
+        peerCount: peersMap.size,
+        peers: Array.from(peersMap.values()),
+      });
+
+      console.log(`[socket] "${collabUser.name}" (${socket.id}) joined room: ${roomId} [${peersMap.size} online]`);
     });
 
-    socket.on('canvas-update', ({ roomId, data }: { roomId: string; data: CanvasJson }) => {
+    socket.on('leave-room', (roomId: string) => {
+      if (typeof roomId !== 'string' || !roomId.trim()) return;
+      socket.leave(roomId);
+      const peersMap = roomPeers.get(roomId);
+      if (peersMap) {
+        peersMap.delete(socket.id);
+        io.to(roomId).emit('room-info', {
+          roomId,
+          peerCount: peersMap.size,
+          peers: Array.from(peersMap.values()),
+        });
+        socket.to(roomId).emit('remote-cursor-remove', { socketId: socket.id });
+      }
+    });
+
+    socket.on('canvas-update', ({ roomId, data, slideIndex }: { roomId: string; data: CanvasJson; slideIndex?: number }) => {
       if (typeof roomId !== 'string' || !roomId.trim() || roomId.length > 128) return;
       const room = rooms.get(roomId);
-      if (room) { room.state = data; saveRooms(rooms); }
-      socket.to(roomId).emit('canvas-update', data);
+      if (room) {
+        room.state = data;
+        if (slideIndex !== undefined) room.currentSlideIndex = slideIndex;
+        saveRooms(rooms);
+      }
+      socket.to(roomId).emit('canvas-update', data, slideIndex);
+    });
+
+    socket.on('slide-change', ({ roomId, slideIndex }: { roomId: string; slideIndex: number }) => {
+      if (typeof roomId !== 'string' || !roomId.trim()) return;
+      const room = rooms.get(roomId);
+      if (room) {
+        room.currentSlideIndex = slideIndex;
+        saveRooms(rooms);
+      }
+      socket.to(roomId).emit('slide-change', slideIndex);
+    });
+
+    socket.on('cursor-update', ({ roomId, cursor, user }: { roomId: string; cursor: { x: number; y: number }; user: CollabUser }) => {
+      if (typeof roomId !== 'string' || !roomId.trim() || !cursor) return;
+      socket.to(roomId).emit('remote-cursor', {
+        socketId: socket.id,
+        cursor,
+        user: user || socket.data.user || { id: socket.id, name: 'Participant', color: '#2563eb' },
+      });
     });
 
     socket.on('viewport-update', ({ roomId, viewport }: { roomId: string; viewport: ViewportTransform }) => {
@@ -144,6 +210,19 @@ async function startServer(): Promise<void> {
     });
 
     socket.on('disconnect', () => {
+      const roomId = socket.data.roomId;
+      if (roomId) {
+        const peersMap = roomPeers.get(roomId);
+        if (peersMap) {
+          peersMap.delete(socket.id);
+          io.to(roomId).emit('room-info', {
+            roomId,
+            peerCount: peersMap.size,
+            peers: Array.from(peersMap.values()),
+          });
+          socket.to(roomId).emit('remote-cursor-remove', { socketId: socket.id });
+        }
+      }
       console.log(`[socket] Disconnected: ${socket.id}`);
     });
   });
@@ -183,6 +262,7 @@ async function startServer(): Promise<void> {
   });
 
   app.use('/api/ai', aiRouter);
+  app.use('/api/codelab', codeLabRouter);
 
   // ── Vite dev middleware / static prod serve ───────────────────────────────
 

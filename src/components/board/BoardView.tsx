@@ -6,11 +6,12 @@ import { DomOverlay } from './DomOverlay';
 import { VoiceBar } from './VoiceBar';
 import { PageBar } from './PageBar';
 import { AgentCursor } from './AgentCursor';
+import { RemoteCursors } from './RemoteCursors';
 import { useStore } from '../../store';
 
 export const BoardView: React.FC = () => {
   const [isReady, setIsReady] = useState(false);
-  const { setActiveView } = useStore();
+  const { setActiveView, ui, setSidebarOpen } = useStore();
 
   const handleCanvasReady = useCallback(() => {
     setIsReady(true);
@@ -35,22 +36,25 @@ export const BoardView: React.FC = () => {
       {/* 2.5 Live AI Drawing Agent HUD & Cursor */}
       <AgentCursor />
 
+      {/* 2.7 Live Multiplayer Participant Cursors */}
+      <RemoteCursors />
+
       {/* 3. Floating Left Toolbar (Trido pill style) */}
       <DrawingToolbar />
 
-      {/* 4. Left Edge Floating Chevron */}
+      {/* 4. Left Edge Floating Chevron (Toggles Workspace Sidebar) */}
       <button
-        onClick={() => {}}
-        title="Whiteboard Tools"
+        onClick={() => setSidebarOpen(!ui.isSidebarOpen)}
+        title={ui.isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
         className="absolute left-1.5 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md flex items-center justify-center text-slate-500 hover:text-blue-600 hover:bg-slate-50 transition-colors pointer-events-auto"
       >
-        <ChevronLeft size={16} />
+        {ui.isSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
       </button>
 
       {/* 5. Right Edge Floating Chevron (Opens KimiWise AI Chat) */}
       <button
         onClick={() => setActiveView('chat')}
-        title="Open KimiWise AI Chat"
+        title="Open KimiWise AI Chat Assistant"
         className="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-10 h-10 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-md flex items-center justify-center text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors pointer-events-auto group"
       >
         <ChevronRight size={18} className="group-hover:translate-x-0.5 transition-transform" />

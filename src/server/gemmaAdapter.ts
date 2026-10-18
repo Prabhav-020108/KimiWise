@@ -43,14 +43,12 @@ async function generateContentWithFallback(
 
   const candidateModels = Array.from(
     new Set([
+      'gemini-3.1-flash-lite',
+      'gemini-3.5-flash-lite',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
       model,
       'gemma-4-26b-a4b-it',
-      'gemini-flash-latest',
-      'gemini-3.5-flash-lite',
-      'gemini-3-flash-preview',
-      'gemini-3.8-flash',
-      'gemini-3.5-flash',
-      'gemini-3.1-flash-lite',
       ...(CONFIG.ai.gemma.fallbackModels || []),
     ])
   ).filter((m) => m !== 'gemma-4-31b-it' && m !== 'gemma-3-27b-it');
@@ -478,47 +476,48 @@ export const generateBoardLessonGemma = async (
   const ai = getClient(customKey);
   const model = getModel(modelOverride);
 
-  const isSvgPrompt = /svg|image|draw|illustration|vector|diagram|cycle|anatomy|architecture|structure|circuit/i.test(topic);
+  const wantsFlowchart = /flowchart|flow\s*chart|process|algorithm|steps|sequence|logic|pipeline|roadmap|lifecycle/i.test(topic);
+  const isSvgPrompt = !wantsFlowchart && /svg|vector|anatomy|circuit|solar\s*system|cell\s*structure|molecule|heart\s*diagram/i.test(topic);
 
-  const prompt = `You are a world-class AI digital classroom educator and blackboard illustrator.
-The user asked: "${topic}"
+  const prompt = `You are an elite educational AI and blackboard visualizer.
+The user requested: "${topic}"
 
-CRITICAL INSTRUCTIONS FOR ACCURACY AND VISUAL QUALITY:
+CRITICAL INSTRUCTIONS FOR FLOWCHART ACCURACY & TECHNICAL EXCELLENCE:
 1. Provide an extremely accurate, domain-specific, and rigorous response for: "${topic}".
-2. Do NOT be vague or generic. Use real equations, code, or technical mechanisms.
-3. ${isSvgPrompt ? 'GENERATE A HIGH-QUALITY VECTOR SVG in the "svg" field. The SVG must be standalone, valid XML (<svg viewBox="0 0 600 450" xmlns="http://www.w3.org/2000/svg">...</svg>), with vibrant modern colors (#6366f1, #3b82f6, #10b981, #f59e0b, #0f172a), rounded boxes, crisp connecting arrows, and readable text labels for every part.' : 'Optionally include a clean standalone SVG in the "svg" field if a visual diagram directly illustrates this concept.'}
-4. Provide 4 to 6 sequential workflow nodes accurately mapping out the concept.
-5. Provide detailed pedagogical lesson notes with a concrete real-world analogy and high-yield takeaway.
+2. Do NOT be vague, generic, or use placeholder text. Use real technical mechanisms, code/math invariants, and concrete variable names.
+3. If this is an algorithm or engineering concept, ensure the steps accurately capture initialization, computation, decision branching, and termination.
+4. ${isSvgPrompt ? 'GENERATE A STANDALONE VECTOR SVG in the "svg" field (<svg viewBox="0 0 600 450" xmlns="http://www.w3.org/2000/svg">...).' : 'Set "type": "flowchart" and leave "svg" null or undefined.'}
+5. Provide 4 to 6 sequential workflow nodes accurately mapping out the concept.
+6. Provide rich pedagogical lesson notes with a concrete real-world analogy and high-yield takeaway.
 
-Return ONLY valid JSON matching this exact structure (no markdown fences, no text outside JSON):
+Return ONLY raw valid JSON matching this exact structure (no markdown fences, no text outside JSON):
 {
   "title": "Clean concise topic title",
   "type": "${isSvgPrompt ? 'svg' : 'flowchart'}",
-  "svg": "<svg viewBox=\\"0 0 600 450\\" xmlns=\\"http://www.w3.org/2000/svg\\">...</svg>",
   "nodes": [
     {
-      "label": "Short Step Title (max 28 chars)",
-      "sublabel": "Concise 1-sentence technical explanation of what occurs in this step",
+      "label": "Short Step Title (max 26 chars)",
+      "sublabel": "Concrete 1-sentence technical explanation of what occurs in this step",
       "type": "start"
     },
     {
       "label": "Step 2 Title",
-      "sublabel": "Explanation of phase 2",
+      "sublabel": "Technical explanation of step 2",
       "type": "process"
     },
     {
-      "label": "Conditional/Decision or Core Pivot",
-      "sublabel": "Explanation of decision or verification",
+      "label": "Pivot / Decision Check",
+      "sublabel": "Technical explanation of conditional evaluation",
       "type": "decision"
     },
     {
       "label": "Step 4 Title",
-      "sublabel": "Explanation of phase 4",
+      "sublabel": "Technical explanation of step 4",
       "type": "process"
     },
     {
-      "label": "Final Outcome / Completion",
-      "sublabel": "Final state description",
+      "label": "Final Outcome / Return",
+      "sublabel": "Final state description & return value",
       "type": "end"
     }
   ],
@@ -528,7 +527,7 @@ Return ONLY valid JSON matching this exact structure (no markdown fences, no tex
     "keyPrinciples": [
       "Key principle 1 with technical detail",
       "Key principle 2 explaining the mechanism",
-      "Key principle 3 addressing common confusion"
+      "Key principle 3 addressing common confusion or complexity"
     ],
     "realWorldAnalogy": "An intuitive everyday analogy that helps students visualize it instantly.",
     "takeaway": "The single most important rule, formula, or takeaway to remember."
@@ -537,7 +536,7 @@ Return ONLY valid JSON matching this exact structure (no markdown fences, no tex
 
 Requirements:
 1. Provide between 4 to 6 accurate, domain-specific steps.
-2. The type of the first node must be "start", intermediate nodes "process" or "decision", and last node "end".
+2. Node 0 must have type "start", middle nodes "process" or "decision", and the final node "end".
 3. Return ONLY raw JSON.`;
 
   const response = await generateContentWithFallback(

@@ -1,13 +1,13 @@
 // ─── KimiWise — Constants & Configuration ────────────────────────────────────
 
-export const GEMMA_MODEL = 'gemma-4-26b-a4b-it'; // Gemma 4 via Google AI Studio (fast & active)
-export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite'; // Fast reliable fallback
+export const GEMMA_MODEL = 'gemini-3.1-flash-lite'; // Fast & active Gemini/Gemma engine (~800ms)
+export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite'; // Fast reliable fallback (~1200ms)
 export const GEMMA_FALLBACK_MODELS = [
-  'gemma-4-26b-a4b-it',
+  'gemini-3.1-flash-lite',
   'gemini-3.5-flash-lite',
-  'gemini-3-flash-preview',
-  'gemini-3.8-flash',
   'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemma-4-26b-a4b-it',
 ];
 export const OLLAMA_MODEL = 'gemma4:e2b'; // Local Ollama fallback
 export const DEFAULT_CANVAS_COLOR = 'transparent';

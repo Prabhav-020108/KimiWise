@@ -225,23 +225,48 @@ export interface TeacherInsight {
 
 // ── Socket.IO Collaboration ──────────────────────────────────────────────────
 
+export interface CollabUser {
+  id: string;
+  name: string;
+  color: string;
+  isHost?: boolean;
+}
+
+export interface RemoteCursorData {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+  lastSeen: number;
+}
+
 export interface RoomState {
   state: CanvasJson;
+  slides?: any[];
+  currentSlideIndex?: number;
   viewports: Record<string, ViewportTransform>;
   lastViewport?: ViewportTransform | null;
   domElements: Record<string, DomElementState>;
+  peers?: Record<string, CollabUser>;
 }
 
 export interface ClientToServerEvents {
-  'join-room': (roomId: string) => void;
-  'canvas-update': (payload: { roomId: string; data: CanvasJson }) => void;
+  'join-room': (roomId: string, user?: CollabUser) => void;
+  'leave-room': (roomId: string) => void;
+  'canvas-update': (payload: { roomId: string; data: CanvasJson; slideIndex?: number }) => void;
+  'slide-change': (payload: { roomId: string; slideIndex: number }) => void;
+  'cursor-update': (payload: { roomId: string; cursor: { x: number; y: number }; user: CollabUser }) => void;
   'viewport-update': (payload: { roomId: string; viewport: ViewportTransform }) => void;
   'dom-elements-update': (payload: { roomId: string; domElements: Record<string, DomElementState> }) => void;
 }
 
 export interface ServerToClientEvents {
-  'canvas-init': (data: CanvasJson) => void;
-  'canvas-update': (data: CanvasJson) => void;
+  'canvas-init': (data: CanvasJson, slideIndex?: number) => void;
+  'canvas-update': (data: CanvasJson, slideIndex?: number) => void;
+  'slide-change': (slideIndex: number) => void;
+  'room-info': (payload: { roomId: string; peerCount: number; peers: CollabUser[] }) => void;
+  'remote-cursor': (payload: { socketId: string; cursor: { x: number; y: number }; user: CollabUser }) => void;
+  'remote-cursor-remove': (payload: { socketId: string }) => void;
   'viewport-update': (payload: { socketId: string; viewport: ViewportTransform }) => void;
   'dom-elements-init': (data: Record<string, DomElementState>) => void;
   'dom-elements-update': (data: Record<string, DomElementState>) => void;
@@ -249,7 +274,10 @@ export interface ServerToClientEvents {
 }
 
 export interface SocketInterServerEvents {}
-export interface SocketData {}
+export interface SocketData {
+  user?: CollabUser;
+  roomId?: string;
+}
 
 // ── Global augmentations ─────────────────────────────────────────────────────
 
