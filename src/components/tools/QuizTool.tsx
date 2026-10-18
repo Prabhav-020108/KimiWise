@@ -10,10 +10,12 @@ import {
   X,
   Loader2,
   Share2,
+  User,
+  ExternalLink,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { aiService } from '../../services/aiService';
-import type { Quiz, QuizQuestion } from '../../types';
+import type { Quiz, QuizQuestion, QuizSubmissionRecord } from '../../types';
 
 interface QuizToolProps {
   embedded?: boolean;
@@ -28,13 +30,23 @@ export const QuizTool: React.FC<QuizToolProps> = ({
   onClose,
   onSendToBoard,
 }) => {
-  const { teacher, setActiveQuiz, setActiveView } = useStore();
+  const { teacher, setActiveQuiz, setActiveView, recordQuizSubmission, setActiveStudentId } = useStore();
   const [topic, setTopic] = useState(initialTopic || '');
   const [questionCount, setQuestionCount] = useState(5);
   const [difficulty, setDifficulty] = useState('High School');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [showResults, setShowResults] = useState(false);
+  const [lastSubmission, setLastSubmission] = useState<QuizSubmissionRecord | null>(null);
+
+  const activeStudent =
+    teacher.students.find((s) => s.id === (teacher.activeStudentId || 's1')) ||
+    teacher.students[0] || {
+      id: 's1',
+      name: 'Aarav Sharma',
+      avgScore: 92,
+      quizzesCompleted: 6,
+    };
 
   const quickTopics = [
     'Graph Algorithms & Trees',
@@ -51,6 +63,7 @@ export const QuizTool: React.FC<QuizToolProps> = ({
     setIsLoading(true);
     setSelectedAnswers({});
     setShowResults(false);
+    setLastSubmission(null);
 
     try {
       const res = await aiService.generateQuiz(topic.trim(), questionCount);
@@ -134,6 +147,35 @@ export const QuizTool: React.FC<QuizToolProps> = ({
   const handleRetake = () => {
     setSelectedAnswers({});
     setShowResults(false);
+    setLastSubmission(null);
+  };
+
+  const handleCheckAnswers = () => {
+    if (!showResults) {
+      let calculatedCorrect = 0;
+      currentQuiz.questions.forEach((q, idx) => {
+        if (selectedAnswers[idx] === q.correctIndex) {
+          calculatedCorrect++;
+        }
+      });
+      const calculatedPercent =
+        totalQuestions > 0 ? Math.round((calculatedCorrect / totalQuestions) * 100) : 0;
+
+      const record = recordQuizSubmission({
+        studentId: activeStudent.id,
+        studentName: activeStudent.name,
+        quizTitle: currentQuiz.title,
+        topic: topic.trim() || currentQuiz.title.replace(/ Quiz$/i, '') || 'Computer Science',
+        scorePercent: calculatedPercent,
+        correctCount: calculatedCorrect,
+        totalQuestions,
+      });
+
+      setLastSubmission(record);
+      setShowResults(true);
+    } else {
+      setShowResults(false);
+    }
   };
 
   const handleSendToWhiteboard = () => {
@@ -180,6 +222,33 @@ export const QuizTool: React.FC<QuizToolProps> = ({
               <X size={16} />
             </button>
           )}
+        </div>
+
+        {/* Student Active Taker Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+              <User size={13} />
+            </div>
+            <span className="text-slate-600 font-semibold text-xs">Active Student:</span>
+            <select
+              value={activeStudent.id}
+              onChange={(e) => setActiveStudentId(e.target.value)}
+              className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer shadow-xs"
+            >
+              {teacher.students.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name} (Avg: {st.avgScore || 0}%)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium self-end sm:self-auto">
+            <span>{activeStudent.quizzesCompleted || 0} Quizzes completed</span>
+            <span>•</span>
+            <span className="font-bold text-slate-700">{activeStudent.avgScore || 0}% Class Mastery</span>
+          </div>
         </div>
 
         {/* Generator Controls */}
@@ -257,10 +326,10 @@ export const QuizTool: React.FC<QuizToolProps> = ({
 
       {/* ── Score Mastery Banner (when results checked) ────────────────────── */}
       {showResults && (
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between gap-4 animate-in fade-in duration-300">
-          <div className="flex items-center gap-3">
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-300">
+          <div className="flex items-start gap-3">
             <div
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg border shadow-xs ${
+              className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg border shadow-xs shrink-0 mt-0.5 ${
                 scorePercent >= 80
                   ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
                   : scorePercent >= 60
@@ -270,8 +339,8 @@ export const QuizTool: React.FC<QuizToolProps> = ({
             >
               <Trophy size={20} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-black text-slate-900">
                   Score: {correctCount} / {totalQuestions} ({scorePercent}%)
                 </span>
@@ -287,21 +356,43 @@ export const QuizTool: React.FC<QuizToolProps> = ({
                   {scorePercent >= 80 ? 'Mastery Achieved' : scorePercent >= 60 ? 'Competent' : 'Needs Practice'}
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500">
                 {scorePercent >= 80
                   ? 'Outstanding performance! You have grasped this topic thoroughly.'
                   : 'Review the explanations below to solidify your understanding.'}
               </p>
+
+              {/* Real-time Teacher Analytics Sync Notification */}
+              <div className="flex flex-wrap items-center gap-2 pt-1.5 text-[11px]">
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Synced to Teacher Hub for {lastSubmission?.studentName || activeStudent.name}
+                </span>
+                <span className="text-slate-500 font-medium">
+                  {scorePercent >= 80
+                    ? `✓ Topic "${lastSubmission?.topic || topic || 'Concepts'}" recorded in Strengths`
+                    : `⚠️ Topic "${lastSubmission?.topic || topic || 'Concepts'}" recorded in Needs Practice`}
+                </span>
+              </div>
             </div>
           </div>
 
-          <button
-            onClick={handleRetake}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-xs transition-all cursor-pointer"
-          >
-            <RefreshCw size={12} />
-            <span>Retake</span>
-          </button>
+          <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+            <button
+              onClick={() => setActiveView('teacher')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+            >
+              <span>View in Teacher Hub</span>
+              <ExternalLink size={12} />
+            </button>
+            <button
+              onClick={handleRetake}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-700 shadow-xs transition-all cursor-pointer"
+            >
+              <RefreshCw size={12} />
+              <span>Retake</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -401,7 +492,7 @@ export const QuizTool: React.FC<QuizToolProps> = ({
           </button>
 
           <button
-            onClick={() => setShowResults(!showResults)}
+            onClick={handleCheckAnswers}
             disabled={answeredCount === 0 && !showResults}
             className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-500 disabled:opacity-40 transition-all shadow-sm shadow-blue-500/25 active:scale-95 cursor-pointer"
           >

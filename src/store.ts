@@ -12,6 +12,7 @@ import type {
   LessonPlan,
   OcrResult,
   Quiz,
+  QuizSubmissionRecord,
   StudentProgress,
   TeacherInsight,
   VoiceConfig,
@@ -127,6 +128,8 @@ interface TeacherState {
   isInsightsLoading: boolean;
   isDashboardOpen: boolean;
   activeQuiz: Quiz | null;
+  recentSubmissions: QuizSubmissionRecord[];
+  activeStudentId: string | null;
 }
 
 // ── UI / Layout ──────────────────────────────────────────────────────────────
@@ -226,6 +229,16 @@ interface KimiWiseStore {
   setInsights: (insights: TeacherInsight[]) => void;
   setDashboardOpen: (open: boolean) => void;
   setActiveQuiz: (quiz: Quiz | null) => void;
+  setActiveStudentId: (studentId: string | null) => void;
+  recordQuizSubmission: (submission: {
+    studentId?: string;
+    studentName?: string;
+    quizTitle: string;
+    topic: string;
+    scorePercent: number;
+    correctCount: number;
+    totalQuestions: number;
+  }) => QuizSubmissionRecord;
 
   // UI Actions
   setSidebarOpen: (open: boolean) => void;
@@ -252,6 +265,59 @@ const defaultVoiceConfig: VoiceConfig = {
   language: 'en-US',
   silenceDetectionTimeout: 2,
 };
+
+export const INITIAL_DEMO_STUDENTS: StudentProgress[] = [
+  {
+    id: 's1',
+    name: 'Aarav Sharma',
+    avatar: '',
+    quizzesCompleted: 6,
+    avgScore: 92,
+    lastActive: Date.now() - 1000 * 60 * 30,
+    strengths: ['Arrays', 'Functions', 'Hash Maps'],
+    areasToImprove: ['Recursion'],
+  },
+  {
+    id: 's2',
+    name: 'Diya Patel',
+    avatar: '',
+    quizzesCompleted: 5,
+    avgScore: 85,
+    lastActive: Date.now() - 1000 * 60 * 90,
+    strengths: ['Conditional Logic', 'Strings'],
+    areasToImprove: ['Time Complexity', 'Big-O'],
+  },
+  {
+    id: 's3',
+    name: 'Rohan Verma',
+    avatar: '',
+    quizzesCompleted: 3,
+    avgScore: 68,
+    lastActive: Date.now() - 1000 * 60 * 120,
+    strengths: ['Basic Syntax', 'Variables'],
+    areasToImprove: ['Pointers', 'Memory Allocation', 'Nested Loops'],
+  },
+  {
+    id: 's4',
+    name: 'Ananya Iyer',
+    avatar: '',
+    quizzesCompleted: 7,
+    avgScore: 95,
+    lastActive: Date.now() - 1000 * 60 * 15,
+    strengths: ['Binary Trees', 'Sorting Algorithms', 'OOP'],
+    areasToImprove: ['Dynamic Programming'],
+  },
+  {
+    id: 's5',
+    name: 'Kabir Mehta',
+    avatar: '',
+    quizzesCompleted: 4,
+    avgScore: 74,
+    lastActive: Date.now() - 1000 * 60 * 200,
+    strengths: ['Loops', 'List Comprehensions'],
+    areasToImprove: ['Recursion', 'Base Cases'],
+  },
+];
 
 export const useStore = create<KimiWiseStore>()((set) => ({
   // ── Initial State ──────────────────────────────────────────────────────────
@@ -335,11 +401,13 @@ export const useStore = create<KimiWiseStore>()((set) => ({
   },
 
   teacher: {
-    students: [],
+    students: INITIAL_DEMO_STUDENTS,
     insights: [],
     isInsightsLoading: false,
     isDashboardOpen: false,
     activeQuiz: null,
+    recentSubmissions: [],
+    activeStudentId: 's1',
   },
 
   ui: {
@@ -626,6 +694,106 @@ export const useStore = create<KimiWiseStore>()((set) => ({
 
   setActiveQuiz: (activeQuiz) =>
     set((s) => ({ teacher: { ...s.teacher, activeQuiz } })),
+
+  setActiveStudentId: (activeStudentId) =>
+    set((s) => ({ teacher: { ...s.teacher, activeStudentId } })),
+
+  recordQuizSubmission: (submission) => {
+    const id = `sub_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const status =
+      submission.scorePercent >= 80
+        ? 'mastered'
+        : submission.scorePercent >= 60
+        ? 'competent'
+        : 'needs_practice';
+
+    const record: QuizSubmissionRecord = {
+      id,
+      studentId: submission.studentId || 's1',
+      studentName: submission.studentName || 'Student',
+      quizTitle: submission.quizTitle,
+      topic: submission.topic || 'General Concepts',
+      scorePercent: submission.scorePercent,
+      correctCount: submission.correctCount,
+      totalQuestions: submission.totalQuestions,
+      completedAt: Date.now(),
+      status,
+    };
+
+    set((s) => {
+      const students = s.teacher.students.length > 0 ? [...s.teacher.students] : [];
+      let targetStudentIndex = students.findIndex(
+        (st) => st.id === record.studentId || st.name.toLowerCase() === record.studentName.toLowerCase()
+      );
+
+      if (targetStudentIndex === -1 && students.length > 0) {
+        targetStudentIndex = 0;
+      }
+
+      if (targetStudentIndex !== -1) {
+        const student = students[targetStudentIndex];
+        const prevCount = student.quizzesCompleted || 0;
+        const prevAvg = student.avgScore || 0;
+        const newCount = prevCount + 1;
+        const newAvg = Math.round((prevAvg * prevCount + record.scorePercent) / newCount);
+
+        let strengths = [...(student.strengths || [])];
+        let areasToImprove = [...(student.areasToImprove || [])];
+
+        const topic = record.topic;
+        if (record.scorePercent >= 80) {
+          if (!strengths.includes(topic)) strengths.push(topic);
+          areasToImprove = areasToImprove.filter((t) => t.toLowerCase() !== topic.toLowerCase());
+        } else if (record.scorePercent < 70) {
+          if (!areasToImprove.includes(topic)) areasToImprove.push(topic);
+          strengths = strengths.filter((t) => t.toLowerCase() !== topic.toLowerCase());
+        }
+
+        const recent = [record, ...(student.recentQuizzes || [])].slice(0, 10);
+
+        students[targetStudentIndex] = {
+          ...student,
+          quizzesCompleted: newCount,
+          avgScore: newAvg,
+          lastActive: Date.now(),
+          strengths,
+          areasToImprove,
+          recentQuizzes: recent,
+        };
+        record.studentName = student.name;
+        record.studentId = student.id;
+      }
+
+      const newInsight: TeacherInsight = {
+        message:
+          record.scorePercent >= 80
+            ? `🌟 ${record.studentName} demonstrated mastery (${record.scorePercent}%) in "${record.topic}".`
+            : record.scorePercent >= 60
+            ? `📈 ${record.studentName} scored ${record.scorePercent}% in "${record.topic}". Solid progress.`
+            : `⚠️ ${record.studentName} scored ${record.scorePercent}% in "${record.topic}". Targeted practice recommended.`,
+        priority: record.scorePercent < 60 ? 'high' : record.scorePercent >= 80 ? 'low' : 'medium',
+        relatedStudents: [record.studentName],
+      };
+
+      const updatedInsights = [
+        newInsight,
+        ...s.teacher.insights.filter((ins) => ins.message !== newInsight.message),
+      ].slice(0, 10);
+
+      const recentSubs = [record, ...s.teacher.recentSubmissions].slice(0, 20);
+
+      return {
+        teacher: {
+          ...s.teacher,
+          students,
+          recentSubmissions: recentSubs,
+          insights: updatedInsights,
+        },
+      };
+    });
+
+    return record;
+  },
 
   // ── UI Actions ─────────────────────────────────────────────────────────────
 

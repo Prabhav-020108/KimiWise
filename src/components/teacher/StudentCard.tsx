@@ -12,6 +12,7 @@ import type { StudentProgress } from '../../types';
 interface StudentCardProps {
   student: StudentProgress;
   onTargetedPractice?: (student: StudentProgress) => void;
+  isActiveQuizTaker?: boolean;
 }
 
 const AVATAR_COLORS = [
@@ -29,7 +30,11 @@ const getInitials = (name: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
-export const StudentCard: React.FC<StudentCardProps> = ({ student, onTargetedPractice }) => {
+export const StudentCard: React.FC<StudentCardProps> = ({
+  student,
+  onTargetedPractice,
+  isActiveQuizTaker = false,
+}) => {
   const [expanded, setExpanded] = useState(false);
 
   // Pick stable avatar color based on name
@@ -54,7 +59,13 @@ export const StudentCard: React.FC<StudentCardProps> = ({ student, onTargetedPra
     score >= 85 ? 'Advanced' : score >= 70 ? 'Intermediate' : 'Beginner';
 
   return (
-    <div className="p-4 rounded-2xl border border-slate-200/90 bg-white shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex flex-col justify-between select-none">
+    <div
+      className={`p-4 rounded-2xl border bg-white shadow-xs hover:border-blue-300 hover:shadow-sm transition-all flex flex-col justify-between select-none ${
+        isActiveQuizTaker
+          ? 'border-blue-400 ring-2 ring-blue-500/20 shadow-blue-500/10'
+          : 'border-slate-200/90'
+      }`}
+    >
       <div>
         {/* Header: Avatar, Name, Level badge */}
         <div className="flex items-start justify-between gap-3">
@@ -65,9 +76,16 @@ export const StudentCard: React.FC<StudentCardProps> = ({ student, onTargetedPra
               {getInitials(student.name)}
             </div>
             <div>
-              <h4 className="font-bold text-xs text-slate-900 tracking-tight">
-                {student.name}
-              </h4>
+              <div className="flex items-center gap-1.5">
+                <h4 className="font-bold text-xs text-slate-900 tracking-tight">
+                  {student.name}
+                </h4>
+                {isActiveQuizTaker && (
+                  <span className="text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded-full">
+                    Quiz Active
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full border ${badgeColor}`}>
                   {level}
@@ -99,6 +117,29 @@ export const StudentCard: React.FC<StudentCardProps> = ({ student, onTargetedPra
             <span>Target: 100%</span>
           </div>
         </div>
+
+        {/* Latest Quiz Snapshot if available */}
+        {student.recentQuizzes && student.recentQuizzes.length > 0 && (
+          <div className="mt-3 p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-[10.5px]">
+            <div className="flex items-center gap-1.5 truncate pr-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0" />
+              <span className="font-semibold text-slate-700 truncate">
+                {student.recentQuizzes[0].topic}
+              </span>
+            </div>
+            <span
+              className={`font-black px-1.5 py-0.5 rounded-md border shrink-0 ${
+                student.recentQuizzes[0].scorePercent >= 80
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : student.recentQuizzes[0].scorePercent >= 60
+                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                  : 'bg-amber-50 text-amber-700 border-amber-200'
+              }`}
+            >
+              {student.recentQuizzes[0].scorePercent}%
+            </span>
+          </div>
+        )}
 
         {/* Weak Topics */}
         {student.areasToImprove && student.areasToImprove.length > 0 && (
@@ -137,6 +178,24 @@ export const StudentCard: React.FC<StudentCardProps> = ({ student, onTargetedPra
                 </span>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Expanded Quiz History */}
+        {expanded && student.recentQuizzes && student.recentQuizzes.length > 1 && (
+          <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+              Quiz History:
+            </p>
+            {student.recentQuizzes.slice(1, 4).map((q, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between text-[10.5px] text-slate-600"
+              >
+                <span className="truncate pr-2">{q.topic}</span>
+                <span className="font-bold shrink-0">{q.scorePercent}%</span>
+              </div>
+            ))}
           </div>
         )}
       </div>

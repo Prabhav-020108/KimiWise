@@ -204,6 +204,21 @@ export interface Quiz {
   createdAt: number;
 }
 
+// ── Quiz Submission & Analytics Record ───────────────────────────────────────
+
+export interface QuizSubmissionRecord {
+  id: string;
+  studentId: string;
+  studentName: string;
+  quizTitle: string;
+  topic: string;
+  scorePercent: number;
+  correctCount: number;
+  totalQuestions: number;
+  completedAt: number;
+  status: 'mastered' | 'competent' | 'needs_practice';
+}
+
 // ── Student / Teacher Dashboard ──────────────────────────────────────────────
 
 export interface StudentProgress {
@@ -215,6 +230,7 @@ export interface StudentProgress {
   lastActive: number;
   strengths: string[];
   areasToImprove: string[];
+  recentQuizzes?: QuizSubmissionRecord[];
 }
 
 export interface TeacherInsight {

@@ -11,6 +11,8 @@ import {
   Loader2,
   CheckCircle2,
   Lightbulb,
+  Award,
+  ArrowRight,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { aiService } from '../../services/aiService';
@@ -79,7 +81,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   onOpenLessonPlanner,
   onTargetedQuiz,
 }) => {
-  const { teacher, setStudents, setInsights } = useStore();
+  const { teacher, setStudents, setInsights, setActiveView } = useStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterMode, setFilterMode] = useState<'all' | 'needsHelp' | 'highAchievers'>('all');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
@@ -392,6 +394,121 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       </div>
 
+      {/* ── Recent Quiz Activity & Live Mastery Feed ─────────────────── */}
+      <div className="p-5 rounded-2xl border border-slate-200/90 bg-white shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center shadow-xs">
+              <Award size={17} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-extrabold text-slate-900">
+                  Recent Quiz Activity & Live Mastery Stream
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-full">
+                  {teacher.recentSubmissions.length} Recorded
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Live assessment scoring, automatic mastery promotions, and student struggle detection
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setActiveView('quiz')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-200 hover:border-blue-200 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 self-start sm:self-auto"
+          >
+            <span>Launch Quiz Arena</span>
+            <ArrowRight size={12} />
+          </button>
+        </div>
+
+        {/* Submissions Feed List */}
+        {teacher.recentSubmissions && teacher.recentSubmissions.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teacher.recentSubmissions.slice(0, 6).map((sub) => {
+              const isMastered = sub.scorePercent >= 80;
+              const isCompetent = sub.scorePercent >= 60 && !isMastered;
+              const minutesAgo = Math.max(0, Math.round((Date.now() - sub.completedAt) / 60000));
+              const timeDisplay = minutesAgo === 0 ? 'Just now' : `${minutesAgo}m ago`;
+
+              return (
+                <div
+                  key={sub.id}
+                  onClick={() => setSearchQuery(sub.studentName)}
+                  title={`Click to filter roster by ${sub.studentName}`}
+                  className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-white hover:border-blue-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-2.5 cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 font-bold text-[11px] flex items-center justify-center border border-blue-200 shrink-0">
+                        {sub.studentName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                          {sub.studentName}
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {timeDisplay}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
+                        isMastered
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : isCompetent
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'bg-rose-50 text-rose-700 border-rose-200'
+                      }`}
+                    >
+                      {sub.status === 'mastered'
+                        ? 'Mastered'
+                        : sub.status === 'competent'
+                        ? 'Competent'
+                        : 'Needs Practice'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[11.5px] font-semibold text-slate-800 truncate">
+                      {sub.quizTitle}
+                    </p>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-medium text-[10px]">
+                        Topic: {sub.topic}
+                      </span>
+                      <span className="font-extrabold text-slate-900">
+                        {sub.scorePercent}% ({sub.correctCount}/{sub.totalQuestions})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-6 rounded-xl border border-dashed border-slate-200 text-center space-y-2 bg-slate-50/40">
+            <p className="text-xs font-semibold text-slate-600">
+              No live quiz submissions recorded yet.
+            </p>
+            <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+              When students complete multiple-choice assessments in the Quiz Arena, scores, mastery badges, and curriculum insights will stream here automatically.
+            </p>
+            <button
+              onClick={() => setActiveView('quiz')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 mt-2 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 shadow-xs cursor-pointer transition-all"
+            >
+              <span>Take a Live Assessment</span>
+              <ArrowRight size={12} />
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* ── Student Roster Search & Grid ─────────────────────────────────── */}
       <div className="space-y-4">
         {/* Controls Bar */}
@@ -463,6 +580,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             <StudentCard
               key={student.id}
               student={student}
+              isActiveQuizTaker={teacher.activeStudentId === student.id}
               onTargetedPractice={handleTargetedPractice}
             />
           ))}
