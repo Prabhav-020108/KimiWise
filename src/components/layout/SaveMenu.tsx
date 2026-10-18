@@ -10,9 +10,12 @@ import {
   Clock,
   FolderOpen,
   Image as ImageIcon,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { toast } from '../../utils/toast';
+import { pdfExportService } from '../../services/pdfExportService';
 
 export const SaveMenu: React.FC = () => {
   const { session, setCurrentSession } = useStore();
@@ -22,6 +25,8 @@ export const SaveMenu: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavedDone, setIsSavedDone] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfProgressText, setPdfProgressText] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,7 +153,44 @@ export const SaveMenu: React.FC = () => {
     }
   };
 
-  // ── 3. Export Active Slide as High-Res PNG (2x) ─────────────────────────────
+  // ── 3. Export All Slides as Multi-Page PDF Deck (Phase E) ───────────────────
+  const handleExportPdfDeck = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const slides = syncCurrentSlide();
+    const store = useStore.getState();
+
+    if (!slides || slides.length === 0) {
+      toast.error('No whiteboard slides found to export.');
+      return;
+    }
+
+    setIsExportingPdf(true);
+    setPdfProgressText(`Preparing ${slides.length} slide(s)...`);
+
+    try {
+      const result = await pdfExportService.exportLessonDeck({
+        slides,
+        currentSlideIndex: store.canvas.currentPageIndex,
+        lessonTitle: title || 'Classroom Whiteboard Lesson',
+        roomPin: store.collab.roomId,
+        teacherName: store.collab.myUser?.name || 'KimiWise Instructor',
+        onProgress: (_current, _total, message) => {
+          setPdfProgressText(message);
+        },
+      });
+
+      toast.success(`Lesson Deck exported as PDF (${result.pageCount} slide${result.pageCount === 1 ? '' : 's'})!`);
+      setIsOpen(false);
+    } catch (err: any) {
+      console.error('[SaveMenu] PDF export failed:', err);
+      toast.error('Failed to export PDF deck: ' + (err.message || ''));
+    } finally {
+      setIsExportingPdf(false);
+      setPdfProgressText(null);
+    }
+  };
+
+  // ── 4. Export Active Slide as High-Res PNG (2x) ─────────────────────────────
   const handleExportPng = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     try {
@@ -387,7 +429,39 @@ export const SaveMenu: React.FC = () => {
               <Download size={14} className="text-slate-400" />
             </button>
 
-            {/* Option 3: Export as High-Res PNG Image */}
+            {/* Option 3: Export Full Lesson as Multi-Page PDF Deck (Phase E) */}
+            <button
+              type="button"
+              onClick={handleExportPdfDeck}
+              disabled={isExportingPdf}
+              className="w-full flex items-center justify-between p-2.5 rounded-2xl hover:bg-rose-50/50 border border-transparent hover:border-rose-200 transition-all cursor-pointer text-left group disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  {isExportingPdf ? (
+                    <Loader2 size={16} className="animate-spin text-rose-600" />
+                  ) : (
+                    <FileText size={16} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
+                    <span>Export Full Lesson as PDF Deck</span>
+                    <span className="text-[10px] font-bold text-rose-600 bg-rose-100/70 border border-rose-200/80 px-1.5 py-0.2 rounded-full">
+                      All Slides
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 font-medium truncate">
+                    {isExportingPdf && pdfProgressText
+                      ? pdfProgressText
+                      : `Compile all ${useStore.getState().canvas.slides?.length || 1} slide(s) into multi-page presentation deck`}
+                  </div>
+                </div>
+              </div>
+              <Download size={14} className="text-slate-400 shrink-0 ml-2" />
+            </button>
+
+            {/* Option 4: Export as High-Res PNG Image */}
             <button
               type="button"
               onClick={handleExportPng}

@@ -1,13 +1,16 @@
-import React from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, FileText, Loader2 } from 'lucide-react';
 import { useStore } from '../../store';
 import { collabService } from '../../services/collabService';
+import { pdfExportService } from '../../services/pdfExportService';
+import { toast } from '../../utils/toast';
 
 // ── Page & Slide indicator bar – bottom left (matches Trido / Google Slides) ──
 export const PageBar: React.FC = () => {
-  const { canvas, addSlide, setSlide, deleteSlide } = useStore();
+  const { canvas, addSlide, setSlide, deleteSlide, session, collab } = useStore();
   const slides = canvas.slides && canvas.slides.length > 0 ? canvas.slides : [{ id: '1', name: 'Slide 1' }];
   const currentIndex = canvas.currentPageIndex ?? 0;
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleNavigateSlide = (idx: number) => {
     setSlide(idx);
@@ -18,6 +21,39 @@ export const PageBar: React.FC = () => {
     addSlide();
     const nextIdx = useStore.getState().canvas.currentPageIndex;
     collabService.sendSlideChange(nextIdx);
+  };
+
+  const handleExportPdf = async () => {
+    const fCanvas = typeof window !== 'undefined' ? (window as any).__KIMIWISE_CANVAS__ : null;
+    const store = useStore.getState();
+    const currentSlides = [...store.canvas.slides];
+    const idx = store.canvas.currentPageIndex;
+
+    if (fCanvas && currentSlides[idx]) {
+      currentSlides[idx] = {
+        ...currentSlides[idx],
+        canvasJson: fCanvas.toJSON(['id', 'selectable', 'sublabel', 'aiBatchId']),
+      };
+      useStore.setState((s) => ({
+        canvas: { ...s.canvas, slides: currentSlides },
+      }));
+    }
+
+    setIsExporting(true);
+    try {
+      const result = await pdfExportService.exportLessonDeck({
+        slides: currentSlides,
+        currentSlideIndex: idx,
+        lessonTitle: session.currentSession?.title || 'Classroom Whiteboard Lesson',
+        roomPin: collab.roomId,
+        teacherName: collab.myUser?.name || 'KimiWise Teacher',
+      });
+      toast.success(`Exported ${result.pageCount} slide(s) to PDF deck!`);
+    } catch (e: any) {
+      toast.error('Failed to export PDF: ' + (e?.message || ''));
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -89,6 +125,16 @@ export const PageBar: React.FC = () => {
         className="w-8 h-8 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition-all active:scale-95"
       >
         <Plus size={16} />
+      </button>
+
+      {/* Export All Slides as PDF deck button */}
+      <button
+        onClick={handleExportPdf}
+        disabled={isExporting}
+        title={`Export all ${slides.length} slide(s) as multi-page PDF presentation deck`}
+        className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-all active:scale-95 disabled:opacity-50"
+      >
+        {isExporting ? <Loader2 size={14} className="animate-spin text-rose-600" /> : <FileText size={15} />}
       </button>
     </div>
   );
